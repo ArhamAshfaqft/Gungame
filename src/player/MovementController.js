@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 import { soundEngine } from '../audio/SoundEngine.js';
 
+// Keys the game owns while the pointer is locked. Tab and the Alt chords otherwise reach the browser.
+const BROWSER_GUARD_KEYS = new Set([
+    'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyC', 'KeyQ', 'KeyE', 'KeyR', 'KeyX',
+    'Space', 'ShiftLeft', 'ShiftRight', 'AltLeft', 'AltRight', 'Tab',
+    'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'
+]);
+
 export class MovementController {
     constructor(camera, domElement) {
         this.camera = camera;
@@ -135,11 +142,16 @@ export class MovementController {
     setupKeyboard() {
         window.addEventListener('keydown', (e) => {
             if (!this.isLocked) return;
-            if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ControlLeft', 'AltLeft', 'AltRight'].includes(e.code)) e.preventDefault();
+            // Pointer lock does not stop the browser's own shortcuts. Swallow every game key, Tab,
+            // and any Alt chord so Alt+D / Alt+Left / Tab cannot steal focus and drop the lock.
+            if (e.key === 'Tab' || e.altKey || e.ctrlKey || e.metaKey || BROWSER_GUARD_KEYS.has(e.code)) e.preventDefault();
             this.onKeyChange(e.code, true);
         });
 
         window.addEventListener('keyup', (e) => {
+            if (!this.isLocked) return;
+            // On Windows the Alt menu is opened on release, so guard the release as well.
+            if (e.key === 'Tab' || e.altKey || e.code === 'AltLeft' || e.code === 'AltRight') e.preventDefault();
             this.onKeyChange(e.code, false);
         });
     }
@@ -181,7 +193,6 @@ export class MovementController {
                 this.keys.jump = isDown;
                 break;
             case 'KeyC':
-            case 'ControlLeft':
                 if (isDown && !this.keys.slide) {
                     this.handleSlidePress();
                 }

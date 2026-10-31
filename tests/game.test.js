@@ -181,6 +181,36 @@ test('slow walking is quiet and crouching is silent', () => {
     assert.equal(steps.length, 0);
 });
 
+test('while locked, Tab and Alt chords never reach the browser', () => {
+    const p = player();
+    const key = (code, extra = {}) => {
+        const event = Object.assign(new Event('keydown', { cancelable: true }), { code, ...extra });
+        window.dispatchEvent(event);
+        return event;
+    };
+
+    p.isLocked = true;
+    assert.equal(key('Tab').defaultPrevented, true);
+    assert.equal(key('KeyD', { altKey: true }).defaultPrevented, true);
+    assert.equal(key('ArrowLeft', { altKey: true }).defaultPrevented, true);
+    assert.equal(key('KeyP').defaultPrevented, false);
+
+    p.isLocked = false;
+    document.dispatchEvent(new Event('pointerlockchange'));
+    assert.equal(key('Tab').defaultPrevented, false);
+});
+
+test('Ctrl no longer starts a slide, so Ctrl+W cannot close the tab', () => {
+    const p = player();
+    p.isGrounded = true;
+    p.keys.forward = true;
+    p.velocity.set(0, 0, -10);
+    p.onKeyChange('ControlLeft', true);
+    assert.equal(p.isSliding, false);
+    p.onKeyChange('KeyC', true);
+    assert.equal(p.isSliding, true);
+});
+
 test('slopes support continuous uphill movement', () => {
     const p = player();
     const ramp = box([-3, 0, 4], [3, 3.75, 16]);

@@ -12,7 +12,7 @@ Run the movement and gunplay regression checks with `npm test`.
 
 - WASD / arrow keys: move
 - Shift + forward: sprint
-- C / left Ctrl: slide; press again to cancel
+- C: slide; press again to cancel
 - Space: jump / slide-jump
 - Q / E: lean (peek) left / right around cover
 - Hold Alt: slow walk, with very light footsteps
@@ -21,6 +21,8 @@ Run the movement and gunplay regression checks with `npm test`.
 - Hold right mouse: scope
 - R: reload
 - Escape: pause and release mouse
+
+While the mouse is locked the game swallows Tab, Alt and Ctrl shortcuts, so browser focus changes (address bar, tab switching) cannot interrupt play.
 
 The current mode uses seven respawning practice bots. It does not include multiplayer or enemy return fire.
 
