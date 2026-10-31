@@ -1,0 +1,558 @@
+:root {
+    --bg-dark: #0a0d14;
+    --accent: #ff9d00;
+    --cyan: #00f0ff;
+    --red: #ff3344;
+    --gold: #ffd700;
+    --text-white: #f0f4fc;
+    --text-dim: #7e8b9b;
+    --crosshair-gap: 12px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+body, html {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--bg-dark);
+    font-family: 'Rajdhani', sans-serif;
+    color: var(--text-white);
+}
+
+#game-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 1;
+}
+
+/* ====================================================
+   SNIPER SCOPE OVERLAY (ADS)
+   ==================================================== */
+#scope-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at center, transparent 38%, rgba(0, 0, 0, 0.95) 48%, #000000 52%);
+    pointer-events: none;
+    transition: opacity 0.08s ease-out;
+}
+
+.scope-lens {
+    position: relative;
+    width: min(85vh, 85vw);
+    height: min(85vh, 85vw);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.scope-reticle {
+    width: 100%;
+    height: 100%;
+}
+
+.scope-circle {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.25);
+    stroke-width: 2.5;
+}
+
+.scope-sub-circle {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.15);
+    stroke-width: 1.5;
+    stroke-dasharray: 6 6;
+}
+
+.scope-hair-thick {
+    stroke: #0a0e14;
+    stroke-width: 4.5;
+    stroke-linecap: square;
+}
+
+.scope-hair-fine {
+    stroke: #ff3344;
+    stroke-width: 1.5;
+}
+
+.scope-center-dot {
+    fill: #ff3344;
+}
+
+.scope-hash {
+    stroke: rgba(255, 255, 255, 0.65);
+    stroke-width: 2.0;
+}
+
+.scope-readout {
+    position: absolute;
+    bottom: 14%;
+    font-family: 'Oxanium', monospace;
+    font-size: 13px;
+    letter-spacing: 2px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.scope-readout.left {
+    left: 12%;
+    text-align: left;
+}
+
+.scope-readout.right {
+    right: 12%;
+    text-align: right;
+}
+
+/* ====================================================
+   HIPFIRE DYNAMIC CROSSHAIR
+   ==================================================== */
+#crosshair {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 0;
+    height: 0;
+    pointer-events: none;
+    z-index: 15;
+    transition: opacity 0.1s ease;
+}
+
+.cross-tick {
+    position: absolute;
+    background-color: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+}
+
+.cross-tick.top {
+    width: 2px;
+    height: 10px;
+    left: -1px;
+    bottom: var(--crosshair-gap);
+}
+
+.cross-tick.bottom {
+    width: 2px;
+    height: 10px;
+    left: -1px;
+    top: var(--crosshair-gap);
+}
+
+.cross-tick.left {
+    width: 10px;
+    height: 2px;
+    top: -1px;
+    right: var(--crosshair-gap);
+}
+
+.cross-tick.right {
+    width: 10px;
+    height: 2px;
+    top: -1px;
+    left: var(--crosshair-gap);
+}
+
+.cross-dot {
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    width: 4px;
+    height: 4px;
+    background-color: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 6px var(--accent);
+}
+
+/* ====================================================
+   HITMARKER
+   ==================================================== */
+#hitmarker {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.85);
+    width: 44px;
+    height: 44px;
+    pointer-events: none;
+    z-index: 18;
+    opacity: 0;
+    transition: opacity 0.05s ease, transform 0.08s ease;
+}
+
+#hitmarker.active {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.15);
+}
+
+.hm-line {
+    stroke: #ffffff;
+    stroke-width: 6;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.9));
+}
+
+#hitmarker.hit-headshot .hm-line {
+    stroke: var(--red);
+    filter: drop-shadow(0 0 8px var(--red));
+}
+
+/* ====================================================
+   FLOATING DAMAGE NUMBERS
+   ==================================================== */
+#damage-numbers {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 19;
+}
+
+.damage-num {
+    position: absolute;
+    font-family: 'Oxanium', sans-serif;
+    font-weight: 800;
+    font-size: 26px;
+    color: #fff;
+    text-shadow: 0 0 8px rgba(0, 0, 0, 0.9), 0 2px 4px #000;
+    animation: floatUp 0.75s ease-out forwards;
+}
+
+.damage-num.crit {
+    color: var(--gold);
+    font-size: 34px;
+    text-shadow: 0 0 14px rgba(255, 77, 77, 0.9);
+}
+
+@keyframes floatUp {
+    0% {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1.3);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -60px) scale(0.9);
+    }
+}
+
+/* ====================================================
+   HUD ELEMENTS
+   ==================================================== */
+#hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+/* Killfeed */
+#killfeed {
+    align-self: flex-end;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+    max-width: 380px;
+}
+
+.kill-row {
+    background: rgba(10, 14, 22, 0.75);
+    border-left: 3px solid var(--accent);
+    padding: 6px 14px;
+    border-radius: 4px;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    opacity: 0;
+    transform: translateX(30px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    backdrop-filter: blur(4px);
+}
+
+.kill-row.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.killer { color: var(--cyan); }
+.victim { color: var(--red); }
+.weapon-icon { margin: 0 6px; color: var(--text-dim); }
+.badge { color: var(--gold); font-size: 13px; font-weight: 800; }
+
+/* Streak Banner */
+#streak-banner {
+    position: fixed;
+    top: 22%;
+    left: 50%;
+    transform: translateX(-50%) scale(0.8);
+    font-family: 'Oxanium', sans-serif;
+    font-weight: 800;
+    font-size: 42px;
+    letter-spacing: 4px;
+    color: var(--gold);
+    text-shadow: 0 0 20px rgba(255, 215, 0, 0.8), 0 4px 10px #000;
+    opacity: 0;
+    transition: transform 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.15s ease;
+    pointer-events: none;
+}
+
+#streak-banner.pop {
+    opacity: 1;
+    transform: translateX(-50%) scale(1.1);
+}
+
+/* Speed Panel */
+#speed-panel {
+    position: fixed;
+    bottom: 28px;
+    left: 32px;
+    background: rgba(12, 17, 26, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-left: 4px solid var(--cyan);
+    padding: 12px 20px;
+    border-radius: 6px;
+    backdrop-filter: blur(8px);
+    min-width: 180px;
+}
+
+.speed-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+}
+
+#speed-value {
+    font-family: 'Oxanium', monospace;
+    font-size: 44px;
+    font-weight: 800;
+    line-height: 1;
+    margin: 4px 0;
+    color: var(--text-white);
+    transition: color 0.15s ease;
+}
+
+#speed-value.boost {
+    color: var(--gold);
+    text-shadow: 0 0 14px rgba(255, 215, 0, 0.6);
+}
+
+.speed-bar {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+#speed-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--cyan), var(--gold));
+    transition: width 0.05s linear;
+}
+
+.movement-tags {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.tag {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+}
+
+/* Ammo Panel */
+#ammo-panel {
+    position: fixed;
+    bottom: 28px;
+    right: 32px;
+    background: rgba(12, 17, 26, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-right: 4px solid var(--accent);
+    padding: 14px 24px;
+    border-radius: 6px;
+    backdrop-filter: blur(8px);
+    text-align: right;
+    min-width: 220px;
+}
+
+.weapon-name {
+    font-family: 'Oxanium', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--accent);
+}
+
+.ammo-row {
+    display: flex;
+    justify-content: flex-end;
+    align-items: baseline;
+    gap: 6px;
+    margin: 4px 0;
+}
+
+#ammo-val {
+    font-family: 'Oxanium', monospace;
+    font-size: 52px;
+    font-weight: 800;
+    line-height: 1;
+    color: #fff;
+}
+
+#ammo-res {
+    font-family: 'Oxanium', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-dim);
+}
+
+.ammo-mode {
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+}
+
+/* ====================================================
+   START / INSTRUCTION OVERLAY
+   ==================================================== */
+#start-screen {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(circle at center, rgba(16, 22, 34, 0.94), rgba(6, 9, 14, 0.98));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    backdrop-filter: blur(12px);
+    transition: opacity 0.25s ease;
+}
+
+#start-screen.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.menu-box {
+    max-width: 640px;
+    width: 90%;
+    background: rgba(15, 20, 30, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    padding: 38px 44px;
+    text-align: center;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(255, 157, 0, 0.15);
+}
+
+.glitch-title {
+    font-family: 'Oxanium', sans-serif;
+    font-size: 56px;
+    font-weight: 800;
+    letter-spacing: 6px;
+    background: linear-gradient(90deg, #ff9d00, #ff3344, #00f0ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.subtitle {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: var(--text-dim);
+    margin-bottom: 28px;
+}
+
+.movement-guide {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    text-align: left;
+    margin-bottom: 30px;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 18px 24px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.guide-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 15px;
+}
+
+.key {
+    min-width: 120px;
+    font-family: 'Oxanium', monospace;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--accent);
+    background: rgba(255, 157, 0, 0.12);
+    border: 1px solid rgba(255, 157, 0, 0.35);
+    padding: 4px 10px;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.desc {
+    color: var(--text-white);
+    font-weight: 600;
+}
+
+#btn-play {
+    width: 100%;
+    padding: 16px;
+    font-family: 'Oxanium', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 3px;
+    color: #0b0e14;
+    background: linear-gradient(90deg, #ff9d00, #ffb700);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(255, 157, 0, 0.4);
+    transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+#btn-play:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.12);
+}
+
+.hint {
+    margin-top: 14px;
+    font-size: 12px;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+}
+
+.hidden {
+    display: none !important;
+}

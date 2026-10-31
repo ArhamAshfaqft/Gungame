@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local screenshots and reports
+artifacts/
+game-check.png
+downloaded_assets/
+
+# Source art. 110 MB, above GitHub's 100 MB per-file limit.
+# The exported runtime asset is committed at public/assets/operators/swat.glb.
+Ch15_nonPBR.fbx
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

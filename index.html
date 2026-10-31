@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>FAST SNIPE // Tactical Quickscope Arena</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0d14'/%3E%3Cpath d='M16 5v22M5 16h22' stroke='%23ff9d00' stroke-width='3'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,600;0,700;1,700&family=Oxanium:wght@500;700;800&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+    <!-- Game 3D Canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Fullscreen Sniper Scope Overlay (Visible when ADS) -->
+    <div id="scope-overlay" class="hidden">
+        <div class="scope-lens">
+            <svg class="scope-reticle" viewBox="0 0 1000 1000">
+                <!-- Outer Range Ring -->
+                <circle cx="500" cy="500" r="380" class="scope-circle" />
+                <circle cx="500" cy="500" r="260" class="scope-sub-circle" />
+                
+                <!-- Crosshairs -->
+                <line x1="50" y1="500" x2="440" y2="500" class="scope-hair-thick" />
+                <line x1="560" y1="500" x2="950" y2="500" class="scope-hair-thick" />
+                <line x1="500" y1="50" x2="500" y2="440" class="scope-hair-thick" />
+                <line x1="500" y1="560" x2="950" y2="500" class="scope-hair-thick" />
+
+                <!-- Center Fine Cross -->
+                <line x1="470" y1="500" x2="530" y2="500" class="scope-hair-fine" />
+                <line x1="500" y1="470" x2="500" y2="530" class="scope-hair-fine" />
+                <circle cx="500" cy="500" r="2.5" class="scope-center-dot" />
+
+                <!-- Elevation Mils (Holdover Hashmarks) -->
+                <line x1="492" y1="520" x2="508" y2="520" class="scope-hash" />
+                <line x1="486" y1="540" x2="514" y2="540" class="scope-hash" />
+                <line x1="490" y1="560" x2="510" y2="560" class="scope-hash" />
+                <line x1="480" y1="580" x2="520" y2="580" class="scope-hash" />
+                <line x1="490" y1="600" x2="510" y2="600" class="scope-hash" />
+                <line x1="475" y1="630" x2="525" y2="630" class="scope-hash" />
+
+                <!-- Windage Mils -->
+                <line x1="440" y1="495" x2="440" y2="505" class="scope-hash" />
+                <line x1="460" y1="495" x2="460" y2="505" class="scope-hash" />
+                <line x1="540" y1="495" x2="540" y2="505" class="scope-hash" />
+                <line x1="560" y1="495" x2="560" y2="505" class="scope-hash" />
+            </svg>
+            <div class="scope-readout left">ZERO: 100M<br>CAL: .338 LAPUA</div>
+            <div class="scope-readout right">WIND: 2 MPH L<br>ELEV: +0.00</div>
+        </div>
+    </div>
+
+    <!-- Hipfire Dynamic Crosshair -->
+    <div id="crosshair">
+        <div class="cross-tick top"></div>
+        <div class="cross-tick bottom"></div>
+        <div class="cross-tick left"></div>
+        <div class="cross-tick right"></div>
+        <div class="cross-dot"></div>
+    </div>
+
+    <!-- Hitmarker (Call of Duty 4-tick X) -->
+    <div id="hitmarker" class="hidden">
+        <svg viewBox="0 0 100 100">
+            <line x1="28" y1="28" x2="42" y2="42" class="hm-line" />
+            <line x1="72" y1="28" x2="58" y2="42" class="hm-line" />
+            <line x1="28" y1="72" x2="42" y2="58" class="hm-line" />
+            <line x1="72" y1="72" x2="58" y2="58" class="hm-line" />
+        </svg>
+    </div>
+
+    <!-- Floating Combat Text -->
+    <div id="damage-numbers"></div>
+
+    <!-- Esports In-Game HUD -->
+    <div id="hud">
+        <!-- Top Right Kill Feed -->
+        <div id="killfeed"></div>
+
+        <!-- Center Notification Banner -->
+        <div id="streak-banner"></div>
+
+        <!-- Bottom Left: Speedometer & Slide Meter -->
+        <div id="speed-panel">
+            <div class="speed-header">
+                <span class="speed-label">VELOCITY</span>
+                <span class="speed-unit">KM/H</span>
+            </div>
+            <div id="speed-value">0</div>
+            <div class="speed-bar">
+                <div id="speed-fill"></div>
+            </div>
+            <div class="movement-tags">
+                <span id="tag-slide" class="tag">SLIDE</span>
+                <span id="tag-sprint" class="tag">SPRINT</span>
+            </div>
+        </div>
+
+        <!-- Bottom Right: Weapon & Ammo Counter -->
+        <div id="ammo-panel">
+            <div class="weapon-name">BARRETT M98B // .338</div>
+            <div class="ammo-row">
+                <span id="ammo-val">5</span>
+                <span id="ammo-res">/ 35</span>
+            </div>
+            <div class="ammo-mode">BOLT-ACTION PRECISION</div>
+        </div>
+    </div>
+
+    <!-- Start / Instruction Screen -->
+    <div id="start-screen">
+        <div class="menu-box">
+            <div class="glitch-title">FAST SNIPE</div>
+            <div class="subtitle">FAST-PACED SNIPER ARENA // COD MOVEMENT</div>
+
+            <div class="movement-guide">
+                <div class="guide-item">
+                    <span class="key">SHIFT</span>
+                    <span class="desc">Tactical Sprint</span>
+                </div>
+                <div class="guide-item">
+                    <span class="key">C / CTRL</span>
+                    <span class="desc">Slide (Fast burst while sprinting)</span>
+                </div>
+                <div class="guide-item">
+                    <span class="key">SPACE</span>
+                    <span class="desc">Slide-Jump / Bhop (Carries slide momentum!)</span>
+                </div>
+                <div class="guide-item">
+                    <span class="key">RIGHT CLICK</span>
+                    <span class="desc">Quickscope ADS (130ms instant zoom)</span>
+                </div>
+                <div class="guide-item">
+                    <span class="key">LEFT CLICK</span>
+                    <span class="desc">Fire Heavy Sniper</span>
+                </div>
+                <div class="guide-item">
+                    <span class="key">R</span>
+                    <span class="desc">Tactical Reload</span>
+                </div>
+            </div>
+
+            <button id="btn-play">CLICK TO DROP IN</button>
+            <div class="hint">Pointer Lock captures true mouse aim. Press ESC anytime to release mouse.</div>
+        </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
