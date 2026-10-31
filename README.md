@@ -38,5 +38,5 @@ The preparation report is in `artifacts/swat-optimization.json`.
 Static arena shadows are cached, high-DPI rendering is capped, and remote pose updates run at distance-based
 intervals. First-person IK is recomputed only when a weapon action changes the grip.
 
-The older Three.js soldier sample is retained as an unused asset with its source and license information in
-`public/assets/heroes/CREDITS.md` and `THREE-LICENSE.txt`.
+Only the assets the game loads are committed: `swat.glb`, the M98B rifle and scope, and the eight arena textures.
+The unused model packs, the source FBX and the build artifacts stay on disk but are excluded through `.gitignore`.

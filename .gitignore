@@ -13,6 +13,15 @@ downloaded_assets/
 # The exported runtime asset is committed at public/assets/operators/swat.glb.
 Ch15_nonPBR.fbx
 
+# Non-core asset packs. Kept on disk for local experiments, not committed.
+public/assets/arsenal/
+public/assets/heroes/
+public/assets/textures/floor_*.webp
+public/assets/textures/ph_blocks_*.webp
+public/assets/weapons/*.glb
+!public/assets/weapons/m98b.glb
+!public/assets/weapons/scope.glb
+
 # Editor / OS noise
 .vscode/
 .idea/
