@@ -17,6 +17,7 @@ Run the movement and gunplay regression checks with `npm test`.
 - Q / E: lean (peek) left / right around cover
 - Hold Alt: slow walk, with very light footsteps
 - X: toggle crouch, silent and lower profile
+- F: open / close the training-room door
 - Left mouse: fire
 - Hold right mouse: scope
 - R: reload
@@ -26,7 +27,12 @@ While the mouse is locked the game swallows Tab, Alt and Ctrl shortcuts, so brow
 
 The current mode uses seven respawning practice bots. It does not include multiplayer or enemy return fire.
 
-## Aim settings
+## Training room
+
+A concrete room sits on the practice range at the south end of the map. Its wooden door is built from
+128 boards and opens with **F**; shots punch the boards out where they land and a few more shots tear the
+door apart. The four windows shatter into falling glass. The door and glass rebuild themselves after
+35 seconds so the range stays usable.
 
 The pause menu has hipfire and ADS sensitivity multipliers (0.20x–3.00x) plus inverted vertical aim.
 They are saved to `localStorage` and applied live. Scoped look is normalised against the rendered FOV,

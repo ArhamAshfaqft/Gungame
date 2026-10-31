@@ -10,6 +10,8 @@ export class HUD {
         this.ammoReserve = document.getElementById('ammo-res');
         this.killfeed = document.getElementById('killfeed');
         this.banner = document.getElementById('streak-banner');
+        this.interactPrompt = document.getElementById('interact-prompt');
+        this.interactLabel = document.getElementById('interact-label');
         this.tagSlide = document.getElementById('tag-slide');
         this.tagSprint = document.getElementById('tag-sprint');
         this.tagWalk = document.getElementById('tag-walk');
@@ -109,7 +111,7 @@ export class HUD {
         }
     }
 
-    update(movement, weapon) {
+    update(movement, weapon, room = null) {
         window.__isPlayerSliding = movement.isSliding;
 
         // 1. Crosshair bloom
@@ -163,5 +165,12 @@ export class HUD {
         // 4. Ammo Counter
         this.ammoValue.textContent = weapon.magAmmo;
         this.ammoReserve.textContent = `/ ${weapon.reserveAmmo}`;
+
+        // 6. Door interaction prompt
+        if (this.interactPrompt && room) {
+            const visible = room.canInteract && !room.door.destroyed;
+            this.interactPrompt.classList.toggle('hidden', !visible);
+            if (visible) this.interactLabel.textContent = room.door.open ? 'CLOSE DOOR' : 'OPEN DOOR';
+        }
     }
 }

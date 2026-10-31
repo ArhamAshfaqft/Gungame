@@ -415,6 +415,36 @@ body, html {
     }
 }
 
+/* Door interaction prompt */
+#interact-prompt {
+    position: fixed;
+    left: 50%;
+    bottom: 26%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: rgba(10, 14, 20, 0.82);
+    border: 1px solid rgba(255, 157, 0, 0.5);
+    border-radius: 6px;
+    font-family: 'Oxanium', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--text-white);
+    z-index: 18;
+    pointer-events: none;
+}
+
+#interact-prompt .prompt-key {
+    padding: 2px 8px;
+    border: 1px solid rgba(255, 157, 0, 0.45);
+    border-radius: 4px;
+    background: rgba(255, 157, 0, 0.12);
+    color: var(--accent);
+}
+
 /* Ammo Panel */
 #ammo-panel {
     position: fixed;

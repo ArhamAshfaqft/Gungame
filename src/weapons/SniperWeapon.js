@@ -271,7 +271,12 @@ export class SniperWeapon {
                 curr = curr.parent;
             }
 
-            this.createImpactSparks(hit.point, hit.face ? hit.face.normal : new THREE.Vector3(0, 1, 0));
+            const breakable = hit.object.userData.breakable;
+            if (breakable) {
+                breakable.takeBulletHit(hit, 125, raycaster.ray.direction);
+            } else {
+                this.createImpactSparks(hit.point, hit.face ? hit.face.normal : new THREE.Vector3(0, 1, 0));
+            }
         }
 
         this.createBulletTracer(origin, hitPoint);

@@ -3,7 +3,7 @@ import { soundEngine } from '../audio/SoundEngine.js';
 
 // Keys the game owns while the pointer is locked. Tab and the Alt chords otherwise reach the browser.
 const BROWSER_GUARD_KEYS = new Set([
-    'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyC', 'KeyQ', 'KeyE', 'KeyR', 'KeyX',
+    'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyC', 'KeyQ', 'KeyE', 'KeyR', 'KeyX', 'KeyF',
     'Space', 'ShiftLeft', 'ShiftRight', 'AltLeft', 'AltRight', 'Tab',
     'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'
 ]);

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Arena } from './world/Arena.js';
+import { TrainingRoom } from './world/TrainingRoom.js';
 import { MovementController } from './player/MovementController.js';
 import { SniperWeapon } from './weapons/SniperWeapon.js';
 import { BotManager } from './bots/BotManager.js';
@@ -50,6 +51,10 @@ class FastSnipeGame {
     initGame() {
         // 1. World & Lighting
         this.arena = new Arena(this.scene);
+        this.room = new TrainingRoom(this.scene, this.arena.colliders, {
+            concreteColor: this.arena.concreteColor,
+            concreteNormal: this.arena.concreteNormal
+        });
 
         // 2. Player Movement
         this.movement = new MovementController(this.camera, this.canvas);
@@ -88,6 +93,13 @@ class FastSnipeGame {
             this.canvas.requestPointerLock();
         });
 
+        // Training-room door
+        window.addEventListener('keydown', (event) => {
+            if (event.code === 'KeyF' && this.movement.isLocked) {
+                this.room.interact(this.movement.position);
+            }
+        });
+
         // Pointer Lock State Changes
         document.addEventListener('pointerlockchange', () => {
             if (document.pointerLockElement === this.canvas) {
@@ -108,8 +120,9 @@ class FastSnipeGame {
         if (this.movement.isLocked) {
             this.movement.update(delta, this.arena.colliders, this.arena.jumpPads);
             this.weapon.update(delta);
+            this.room.update(delta, this.movement.position);
             this.botManager.update(delta, this.movement.position);
-            this.hud.update(this.movement, this.weapon);
+            this.hud.update(this.movement, this.weapon, this.room);
         }
 
         // Render

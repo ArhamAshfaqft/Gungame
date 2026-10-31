@@ -249,6 +249,114 @@ class SoundEngine {
         thump.stop(now + 0.12);
     }
 
+    // Wooden door impact: dry splintering thud.
+    playWoodHit() {
+        this.ensureContext();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const buffer = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * 0.16), this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.035));
+        }
+        const source = this.ctx.createBufferSource();
+        source.buffer = buffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(1150, now);
+        filter.frequency.exponentialRampToValueAtTime(420, now + 0.12);
+        filter.Q.value = 1.2;
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+        source.start(now);
+
+        const thump = this.ctx.createOscillator();
+        const thumpGain = this.ctx.createGain();
+        thump.type = 'sine';
+        thump.frequency.setValueAtTime(120, now);
+        thump.frequency.exponentialRampToValueAtTime(55, now + 0.12);
+        thumpGain.gain.setValueAtTime(0.35, now);
+        thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+        thump.connect(thumpGain);
+        thumpGain.connect(this.masterGain);
+        thump.start(now);
+        thump.stop(now + 0.15);
+    }
+
+    // Shattering pane: bright noise burst with a few falling glass pings.
+    playGlassBreak() {
+        this.ensureContext();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const buffer = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * 0.45), this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) {
+            const envelope = Math.exp(-i / (this.ctx.sampleRate * 0.09));
+            data[i] = (Math.random() * 2 - 1) * envelope;
+        }
+        const source = this.ctx.createBufferSource();
+        source.buffer = buffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'highpass';
+        filter.frequency.setValueAtTime(2200, now);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.55, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+        source.start(now);
+
+        for (let i = 0; i < 5; i++) {
+            const t = now + 0.03 + i * 0.045;
+            const ping = this.ctx.createOscillator();
+            const pingGain = this.ctx.createGain();
+            ping.type = 'sine';
+            ping.frequency.setValueAtTime(2400 + Math.random() * 1800, t);
+            pingGain.gain.setValueAtTime(0.11, t);
+            pingGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+            ping.connect(pingGain);
+            pingGain.connect(this.masterGain);
+            ping.start(t);
+            ping.stop(t + 0.13);
+        }
+    }
+
+    playDoorBreak() {
+        this.ensureContext();
+        if (!this.ctx) return;
+        this.playWoodHit();
+        setTimeout(() => this.playWoodHit(), 90);
+        setTimeout(() => this.playWoodHit(), 180);
+    }
+
+    playDoorOpen() {
+        this.ensureContext();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(160, now);
+        osc.frequency.exponentialRampToValueAtTime(90, now + 0.28);
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+        osc.start(now);
+        osc.stop(now + 0.31);
+    }
+
     // Fast Tactical Movement Audio
     playSlide() {
         this.ensureContext();
