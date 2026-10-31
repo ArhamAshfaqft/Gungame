@@ -204,6 +204,51 @@ class SoundEngine {
         }
     }
 
+    // Footsteps: short boot scuff plus a low body thump. Slow walking is almost inaudible.
+    playFootstep(kind = 'run') {
+        this.ensureContext();
+        if (!this.ctx) return;
+        const level = { sprint: 0.5, run: 0.3, walk: 0.1 }[kind] ?? 0.3;
+        if (level <= 0) return;
+        const now = this.ctx.currentTime;
+        const duration = kind === 'sprint' ? 0.13 : 0.11;
+
+        const buffer = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * duration), this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.022));
+        }
+
+        const source = this.ctx.createBufferSource();
+        source.buffer = buffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(kind === 'sprint' ? 1500 : 950, now);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(level, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+        source.start(now);
+
+        const thump = this.ctx.createOscillator();
+        const thumpGain = this.ctx.createGain();
+        thump.type = 'sine';
+        thump.frequency.setValueAtTime(kind === 'sprint' ? 95 : 72, now);
+        thump.frequency.exponentialRampToValueAtTime(38, now + 0.09);
+        thumpGain.gain.setValueAtTime(level * 0.6, now);
+        thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+
+        thump.connect(thumpGain);
+        thumpGain.connect(this.masterGain);
+        thump.start(now);
+        thump.stop(now + 0.12);
+    }
+
     // Fast Tactical Movement Audio
     playSlide() {
         this.ensureContext();

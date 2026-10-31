@@ -431,6 +431,10 @@ export class SniperWeapon {
         // Lean keeps the rifle anchored to the shoulder: it tilts in place instead of orbiting the eye.
         const leanRoll = this.camera.rotation.z;
 
+        // Crouching lowers the rifle a little with the body.
+        this.crouchBlend = THREE.MathUtils.damp(this.crouchBlend || 0, this.movement.isCrouching ? 1 : 0, 10, delta);
+        this.currentPos.y -= this.crouchBlend * 0.03;
+
         // 10. Update the shared weapon and arms rig.
         this.weaponGroup.position.set(
             this.currentPos.x + this.recoilPos.x + swayX + bobX,

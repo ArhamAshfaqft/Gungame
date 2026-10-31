@@ -384,6 +384,35 @@ body, html {
     font-weight: 800;
     letter-spacing: 1px;
     color: var(--text-dim);
+    transition: color 0.12s ease, text-shadow 0.12s ease;
+}
+
+.tag.active {
+    color: var(--accent);
+    text-shadow: 0 0 10px rgba(255, 157, 0, 0.45);
+}
+
+/* Keep the bottom HUD panels from colliding in narrow windows. */
+@media (max-width: 720px) {
+    #speed-panel {
+        transform: scale(0.8);
+        transform-origin: bottom left;
+    }
+
+    #ammo-panel {
+        transform: scale(0.8);
+        transform-origin: bottom right;
+    }
+}
+
+@media (max-width: 460px) {
+    #speed-panel {
+        transform: scale(0.66);
+    }
+
+    #ammo-panel {
+        transform: scale(0.66);
+    }
 }
 
 /* Ammo Panel */

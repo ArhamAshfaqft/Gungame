@@ -10,6 +10,10 @@ export class HUD {
         this.ammoReserve = document.getElementById('ammo-res');
         this.killfeed = document.getElementById('killfeed');
         this.banner = document.getElementById('streak-banner');
+        this.tagSlide = document.getElementById('tag-slide');
+        this.tagSprint = document.getElementById('tag-sprint');
+        this.tagWalk = document.getElementById('tag-walk');
+        this.tagCrouch = document.getElementById('tag-crouch');
 
         this.damageContainer = document.getElementById('damage-numbers');
 
@@ -150,6 +154,11 @@ export class HUD {
 
         const fillPercent = Math.min(100, (speed / 90) * 100);
         this.speedFill.style.width = `${fillPercent}%`;
+
+        this.tagSlide.classList.toggle('active', movement.isSliding);
+        this.tagSprint.classList.toggle('active', movement.isSprinting);
+        this.tagWalk.classList.toggle('active', movement.isWalking);
+        this.tagCrouch.classList.toggle('active', movement.isCrouching);
 
         // 4. Ammo Counter
         this.ammoValue.textContent = weapon.magAmmo;

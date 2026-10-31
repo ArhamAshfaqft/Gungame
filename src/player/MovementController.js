@@ -7,8 +7,10 @@ export class MovementController {
         this.domElement = domElement;
 
         // Configuration
-        this.walkSpeed = 8.0;
+        this.runSpeed = 8.0;
         this.sprintSpeed = 16.5;
+        this.slowWalkSpeed = 3.2;
+        this.crouchSpeed = 3.0;
         this.slideInitialSpeed = 26.0;
         this.slideMinSpeed = 10.0;
         this.slideDecel = 22.0; // m/s^2 deceleration
@@ -18,6 +20,7 @@ export class MovementController {
         // Heights
         this.standHeight = 1.65;
         this.slideHeight = 0.75;
+        this.crouchHeight = 1.05;
         this.currentHeight = this.standHeight;
 
         // State
@@ -26,6 +29,9 @@ export class MovementController {
         this.isGrounded = false;
         this.isSprinting = false;
         this.isSliding = false;
+        this.isCrouching = false;
+        this.isWalking = false;
+        this.stepDistance = 0;
         this.slideTimer = 0;
         this.slideMaxDuration = 0.85;
         this.slideDirection = new THREE.Vector3();
@@ -50,6 +56,8 @@ export class MovementController {
             sprint: false,
             jump: false,
             slide: false,
+            walk: false,
+            crouch: false,
             leanLeft: false,
             leanRight: false
         };
@@ -127,7 +135,7 @@ export class MovementController {
     setupKeyboard() {
         window.addEventListener('keydown', (e) => {
             if (!this.isLocked) return;
-            if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ControlLeft'].includes(e.code)) e.preventDefault();
+            if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ControlLeft', 'AltLeft', 'AltRight'].includes(e.code)) e.preventDefault();
             this.onKeyChange(e.code, true);
         });
 
@@ -185,6 +193,14 @@ export class MovementController {
             case 'KeyE':
                 this.keys.leanRight = isDown;
                 break;
+            case 'AltLeft':
+            case 'AltRight':
+                this.keys.walk = isDown;
+                break;
+            case 'KeyX':
+                if (isDown && !this.keys.crouch) this.toggleCrouch();
+                this.keys.crouch = isDown;
+                break;
         }
     }
 
@@ -217,6 +233,12 @@ export class MovementController {
     cancelSlide() {
         this.isSliding = false;
         this.slideTimer = 0;
+    }
+
+    toggleCrouch() {
+        // Crouching overrides a slide instead of stacking with it.
+        if (this.isSliding) this.cancelSlide();
+        this.isCrouching = !this.isCrouching;
     }
 
     handleJump() {
@@ -254,8 +276,12 @@ export class MovementController {
             moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
         }
 
+        // Slow states: holding Alt walks quietly, X toggles a crouch. Both cancel sprinting.
+        this.isWalking = this.keys.walk && !this.isCrouching && !this.isSliding;
+
         // Sprint logic
-        this.isSprinting = this.keys.sprint && this.keys.forward && !this.isSliding && this.isGrounded;
+        this.isSprinting = this.keys.sprint && this.keys.forward && !this.isSliding &&
+            !this.isCrouching && !this.keys.walk && this.isGrounded;
 
         // 2. Movement state updates
         if (this.isSliding) {
@@ -279,11 +305,13 @@ export class MovementController {
             }
         } else if (this.isGrounded) {
             // Normal Ground Movement
-            const targetSpeed = this.isSprinting ? this.sprintSpeed : this.walkSpeed;
+            const targetSpeed = this.isCrouching ? this.crouchSpeed
+                : this.isWalking ? this.slowWalkSpeed
+                : this.isSprinting ? this.sprintSpeed : this.runSpeed;
             const targetVx = moveDir.x * targetSpeed;
             const targetVz = moveDir.z * targetSpeed;
 
-            const accel = this.isSprinting ? 45.0 : 35.0;
+            const accel = this.isSprinting ? 45.0 : this.isCrouching || this.isWalking ? 22.0 : 35.0;
             this.velocity.x = THREE.MathUtils.damp(this.velocity.x, targetVx, accel, delta);
             this.velocity.z = THREE.MathUtils.damp(this.velocity.z, targetVz, accel, delta);
         } else {
@@ -303,9 +331,11 @@ export class MovementController {
             }
         }
 
-        // Keep feet fixed as eye height changes during a slide.
+        // Keep feet fixed as eye height changes during a slide or crouch.
         const previousHeight = this.currentHeight;
-        const targetHeight = this.isSliding ? this.slideHeight : this.standHeight;
+        const targetHeight = this.isSliding ? this.slideHeight
+            : this.isCrouching ? this.crouchHeight
+            : this.standHeight;
         this.currentHeight = THREE.MathUtils.damp(this.currentHeight, targetHeight, 14.0, delta);
         this.position.y += this.currentHeight - previousHeight;
 
@@ -373,11 +403,28 @@ export class MovementController {
 
         // Head bobbing
         const speed = Math.hypot(this.velocity.x, this.velocity.z);
+        const bobTarget = this.isCrouching ? 0.018 : this.isWalking ? 0.025 : this.isSprinting ? 0.08 : 0.04;
         if (this.isGrounded && speed > 2.0 && !this.isSliding) {
-            this.bobTime += delta * (this.isSprinting ? 18.0 : 12.0);
-            this.bobAmount = THREE.MathUtils.damp(this.bobAmount, this.isSprinting ? 0.08 : 0.04, 8.0, delta);
+            const bobFreq = this.isSprinting ? 18.0 : this.isWalking || this.isCrouching ? 7.5 : 12.0;
+            this.bobTime += delta * bobFreq;
+            this.bobAmount = THREE.MathUtils.damp(this.bobAmount, bobTarget, 8.0, delta);
         } else {
             this.bobAmount = THREE.MathUtils.damp(this.bobAmount, 0, 10.0, delta);
+        }
+
+        // Footsteps follow the stride: sprint stomps, running is normal, slow walking is barely audible,
+        // and crouching is silent.
+        if (this.isGrounded && !this.isSliding && speed > 0.6) {
+            this.stepDistance += speed * delta;
+            const strideLength = this.isSprinting ? 2.4 : this.isCrouching ? 1.5 : this.isWalking ? 1.35 : 1.9;
+            if (this.stepDistance >= strideLength) {
+                this.stepDistance = 0;
+                if (!this.isCrouching) {
+                    soundEngine.playFootstep(this.isWalking ? 'walk' : this.isSprinting ? 'sprint' : 'run');
+                }
+            }
+        } else {
+            this.stepDistance = 0;
         }
 
         const bobY = Math.sin(this.bobTime) * this.bobAmount;

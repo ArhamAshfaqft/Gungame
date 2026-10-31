@@ -138,6 +138,49 @@ test('rifle tilts in place instead of orbiting the eye while peeking', () => {
     assert.ok(Math.abs(weapon.weaponGroup.position.y - weapon.hipPos.y) < 0.01);
 });
 
+test('slow walk and crouch cap speed and eye height', () => {
+    const p = player();
+    p.isGrounded = true;
+    p.keys.forward = true;
+    p.keys.walk = true;
+    for (let i = 0; i < 90; i++) p.update(1 / 60);
+    assert.ok(p.getSpeed() < 3.5, `walk speed ${p.getSpeed()}`);
+
+    p.keys.sprint = true;
+    p.update(1 / 60);
+    assert.equal(p.isSprinting, false);
+
+    p.onKeyChange('KeyX', true);
+    p.onKeyChange('KeyX', false);
+    assert.equal(p.isCrouching, true);
+    for (let i = 0; i < 90; i++) p.update(1 / 60);
+    assert.ok(p.camera.position.y < 1.1);
+    assert.ok(p.getSpeed() < 3.1);
+
+    p.onKeyChange('KeyX', true);
+    p.onKeyChange('KeyX', false);
+    assert.equal(p.isCrouching, false);
+    for (let i = 0; i < 90; i++) p.update(1 / 60);
+    assert.ok(Math.abs(p.position.y - p.standHeight) < 0.01);
+});
+
+test('slow walking is quiet and crouching is silent', () => {
+    const steps = [];
+    soundEngine.playFootstep = kind => steps.push(kind);
+    const p = player();
+    p.isGrounded = true;
+    p.keys.forward = true;
+    p.keys.walk = true;
+    for (let i = 0; i < 180; i++) p.update(1 / 60);
+    assert.ok(steps.length > 0);
+    assert.ok(steps.every(kind => kind === 'walk'));
+
+    steps.length = 0;
+    p.toggleCrouch();
+    for (let i = 0; i < 180; i++) p.update(1 / 60);
+    assert.equal(steps.length, 0);
+});
+
 test('slopes support continuous uphill movement', () => {
     const p = player();
     const ramp = box([-3, 0, 4], [3, 3.75, 16]);
