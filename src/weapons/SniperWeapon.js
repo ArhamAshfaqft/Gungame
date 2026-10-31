@@ -441,6 +441,9 @@ export class SniperWeapon {
             this.currentRot.z + this.recoilRot.z + boltRollZ
         );
 
+        // The viewmodel camera shares the world camera's strafe/peek roll so the rifle tilts with the view.
+        this.viewmodelCamera.rotation.z = this.camera.rotation.z;
+
         this.armsRig?.updateView(delta, this);
 
         // 11. Update Tracers

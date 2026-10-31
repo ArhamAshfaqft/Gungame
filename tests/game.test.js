@@ -54,6 +54,46 @@ test('input is cleared when pointer lock is lost', () => {
     assert.ok(Object.values(p.keys).every(value => value === false));
 });
 
+test('Q and E lean the camera left and right', () => {
+    const p = player();
+    p.position.set(0, p.standHeight, 0);
+    p.yaw = 0;
+    p.isGrounded = true;
+
+    p.onKeyChange('KeyE', true);
+    for (let i = 0; i < 60; i++) p.update(1 / 60);
+    assert.ok(p.lean > 0.9);
+    assert.ok(p.leanOffset > 0.35);
+    assert.ok(p.camera.position.x > p.position.x + 0.35);
+    assert.ok(p.camera.rotation.z < -0.1);
+
+    p.onKeyChange('KeyE', false);
+    p.onKeyChange('KeyQ', true);
+    for (let i = 0; i < 60; i++) p.update(1 / 60);
+    assert.ok(p.lean < -0.9);
+    assert.ok(p.leanOffset < -0.35);
+    assert.ok(p.camera.position.x < p.position.x - 0.35);
+    assert.ok(p.camera.rotation.z > 0.1);
+
+    p.onKeyChange('KeyQ', false);
+    for (let i = 0; i < 60; i++) p.update(1 / 60);
+    assert.ok(Math.abs(p.lean) < 0.01);
+    assert.ok(Math.abs(p.leanOffset) < 0.01);
+});
+
+test('leaning stops before entering cover', () => {
+    const p = player();
+    p.position.set(0, p.standHeight, 0);
+    p.yaw = 0;
+    p.isGrounded = true;
+    const wall = box([0.5, 0, -4], [3, 5, 4]);
+    p.onKeyChange('KeyE', true);
+    for (let i = 0; i < 60; i++) p.update(1 / 60, [wall]);
+    assert.ok(p.lean > 0.9);
+    assert.ok(p.leanOffset > 0.1 && p.leanOffset < 0.35, `lean offset ${p.leanOffset}`);
+    assert.ok(p.camera.position.x < 0.5);
+});
+
 test('slopes support continuous uphill movement', () => {
     const p = player();
     const ramp = box([-3, 0, 4], [3, 3.75, 16]);

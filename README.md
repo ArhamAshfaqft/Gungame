@@ -14,6 +14,7 @@ Run the movement and gunplay regression checks with `npm test`.
 - Shift + forward: sprint
 - C / left Ctrl: slide; press again to cancel
 - Space: jump / slide-jump
+- Q / E: lean (peek) left / right around cover
 - Left mouse: fire
 - Hold right mouse: scope
 - R: reload

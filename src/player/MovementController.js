@@ -45,8 +45,17 @@ export class MovementController {
             right: false,
             sprint: false,
             jump: false,
-            slide: false
+            slide: false,
+            leanLeft: false,
+            leanRight: false
         };
+
+        // Peek / lean (Q left, E right)
+        this.leanMaxOffset = 0.42;
+        this.leanMaxRoll = 0.16;
+        this.lean = 0;
+        this.leanTarget = 0;
+        this.leanOffset = 0;
 
         // Camera Effects
         this.baseFov = 85;
@@ -149,6 +158,12 @@ export class MovementController {
                     this.handleSlidePress();
                 }
                 this.keys.slide = isDown;
+                break;
+            case 'KeyQ':
+                this.keys.leanLeft = isDown;
+                break;
+            case 'KeyE':
+                this.keys.leanRight = isDown;
                 break;
         }
     }
@@ -348,18 +363,25 @@ export class MovementController {
         const bobY = Math.sin(this.bobTime) * this.bobAmount;
         const bobX = Math.cos(this.bobTime * 0.5) * this.bobAmount * 0.5;
 
+        // Peek / lean: slide the eye sideways and roll the head, stopping at cover.
+        this.leanTarget = (this.keys.leanRight ? 1 : 0) - (this.keys.leanLeft ? 1 : 0);
+        this.lean = THREE.MathUtils.damp(this.lean, this.leanTarget, 14.0, delta);
+        const leanRight = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+        const leanWanted = this.lean * this.leanMaxOffset;
+        this.leanOffset = this.resolveLean(leanWanted, leanRight, bobX, bobY, colliders);
+
         // Apply to Camera
         this.camera.position.set(
             this.position.x + bobX,
             this.position.y + bobY,
             this.position.z
-        );
+        ).addScaledVector(leanRight, this.leanOffset);
 
         // Camera Rotation (Euler order YXZ)
         this.camera.rotation.order = 'YXZ';
         this.camera.rotation.y = this.yaw;
         this.camera.rotation.x = this.pitch;
-        this.camera.rotation.z = this.cameraRoll;
+        this.camera.rotation.z = this.cameraRoll - this.lean * this.leanMaxRoll;
 
         // Dynamic FOV for speed sensation
         let desiredFov = this.baseFov;
@@ -370,6 +392,23 @@ export class MovementController {
         // Decay mouse delta for weapon sway
         this.mouseDelta.x *= 0.82;
         this.mouseDelta.y *= 0.82;
+    }
+
+    // Step the eye sideways and stop just before entering cover.
+    resolveLean(distance, direction, bobX = 0, bobY = 0, colliders = []) {
+        if (!distance) return 0;
+        if (!colliders.length) return distance;
+        const steps = 5;
+        const eye = new THREE.Vector3(this.position.x + bobX, this.position.y + bobY, this.position.z);
+        for (let i = 1; i <= steps; i++) {
+            const probe = eye.clone().addScaledVector(direction, distance * i / steps);
+            const blocked = colliders.some(box =>
+                probe.x > box.min.x - 0.18 && probe.x < box.max.x + 0.18 &&
+                probe.z > box.min.z - 0.18 && probe.z < box.max.z + 0.18 &&
+                probe.y > box.min.y && probe.y < box.max.y + 0.18);
+            if (blocked) return distance * (i - 1) / steps;
+        }
+        return distance;
     }
 
     resolveBoxCollision(box, previousFeet = this.position.y - this.currentHeight) {
