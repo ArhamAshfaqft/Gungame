@@ -94,6 +94,35 @@ test('leaning stops before entering cover', () => {
     assert.ok(p.camera.position.x < 0.5);
 });
 
+test('scoped aim is FOV-normalised and follows the ADS slider', () => {
+    const p = player();
+    p.isLocked = true;
+    const look = (dx, dy = 0) => document.dispatchEvent(Object.assign(new Event('mousemove'), { movementX: dx, movementY: dy }));
+
+    p.camera.fov = 85;
+    p.yaw = p.pitch = 0;
+    look(100);
+    const hipDelta = p.yaw;
+
+    p.camera.fov = 22;
+    p.yaw = 0;
+    look(100);
+    const scopedDelta = p.yaw;
+    assert.ok(Math.abs(scopedDelta) < Math.abs(hipDelta) * 0.3);
+    assert.ok(Math.abs(scopedDelta) > Math.abs(hipDelta) * 0.15);
+
+    p.adsSensitivity = 2;
+    p.yaw = 0;
+    look(100);
+    assert.ok(Math.abs(p.yaw) > Math.abs(scopedDelta) * 1.9);
+
+    p.invertY = true;
+    p.camera.fov = 85;
+    p.pitch = 0;
+    look(0, 100);
+    assert.ok(p.pitch > 0);
+});
+
 test('rifle tilts in place instead of orbiting the eye while peeking', () => {
     class TestWeapon extends SniperWeapon {
         loadAssets() {}

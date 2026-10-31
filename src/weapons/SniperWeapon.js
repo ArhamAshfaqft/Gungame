@@ -353,8 +353,8 @@ export class SniperWeapon {
         const targetADS = (this.isAiming && !this.isReloading) ? 1.0 : 0.0;
         this.adsProgress = THREE.MathUtils.damp(this.adsProgress, targetADS, this.adsSpeed, delta);
 
-        // Adjust camera FOV: 85° hipfire down to 22° sniper scope
-        const targetFov = THREE.MathUtils.lerp(this.movement.currentFov, 22.0, this.adsProgress);
+        // Adjust camera FOV: 85° hipfire down to the scoped FOV
+        const targetFov = THREE.MathUtils.lerp(this.movement.currentFov, this.movement.scopeFov, this.adsProgress);
         if (this.camera.fov !== targetFov) {
             this.camera.fov = targetFov;
             this.camera.updateProjectionMatrix();

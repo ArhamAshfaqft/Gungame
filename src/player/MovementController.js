@@ -35,6 +35,10 @@ export class MovementController {
         this.pitch = 0;
         this.yaw = 0.2;
         this.mouseSensitivity = 0.0022;
+        this.hipSensitivity = 1;
+        this.adsSensitivity = 1;
+        this.invertY = false;
+        this.scopeFov = 22;
         this.isLocked = false;
 
         // Key states
@@ -93,8 +97,18 @@ export class MovementController {
             const movementX = e.movementX || 0;
             const movementY = e.movementY || 0;
 
-            this.yaw -= movementX * this.mouseSensitivity;
-            this.pitch -= movementY * this.mouseSensitivity;
+            // Scale with the live FOV so a scoped turn covers the same screen pixels as a hipfire turn.
+            // Without this, the 22-degree ADS view turns ~4.7x faster per mouse count than the 85-degree view.
+            const adsBlend = this.getAdsBlend();
+            const zoomScale = THREE.MathUtils.lerp(1,
+                Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2) /
+                Math.tan(THREE.MathUtils.degToRad(this.baseFov) / 2),
+                adsBlend);
+            const userScale = THREE.MathUtils.lerp(this.hipSensitivity, this.adsSensitivity, adsBlend);
+            const sensitivity = this.mouseSensitivity * zoomScale * userScale;
+
+            this.yaw -= movementX * sensitivity;
+            this.pitch -= movementY * sensitivity * (this.invertY ? -1 : 1);
 
             // Clamp pitch (-89 to 89 degrees)
             this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.pitch));
@@ -103,6 +117,11 @@ export class MovementController {
             this.mouseDelta.x += movementX;
             this.mouseDelta.y += movementY;
         });
+    }
+
+    // 0 while hipfiring, 1 when fully scoped; derived from the rendered FOV.
+    getAdsBlend() {
+        return THREE.MathUtils.clamp((this.baseFov - this.camera.fov) / (this.baseFov - this.scopeFov), 0, 1);
     }
 
     setupKeyboard() {

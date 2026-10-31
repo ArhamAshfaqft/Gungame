@@ -4,6 +4,7 @@ import { MovementController } from './player/MovementController.js';
 import { SniperWeapon } from './weapons/SniperWeapon.js';
 import { BotManager } from './bots/BotManager.js';
 import { HUD } from './ui/HUD.js';
+import { Settings } from './ui/Settings.js';
 import { soundEngine } from './audio/SoundEngine.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
@@ -68,6 +69,7 @@ class FastSnipeGame {
 
         // 5. HUD & UI
         this.hud = new HUD();
+        this.settings = new Settings(this.movement);
     }
 
     initEvents() {

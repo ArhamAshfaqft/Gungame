@@ -146,6 +146,25 @@
                 </div>
             </div>
 
+            <div class="settings-panel">
+                <div class="settings-title">AIM SETTINGS</div>
+                <label class="setting-row" for="set-hip">
+                    <span class="setting-label">HIPFIRE SENSITIVITY</span>
+                    <input id="set-hip" type="range" min="0.2" max="3" step="0.05" value="1">
+                    <span class="setting-value" id="set-hip-val">1.00x</span>
+                </label>
+                <label class="setting-row" for="set-ads">
+                    <span class="setting-label">ADS SENSITIVITY</span>
+                    <input id="set-ads" type="range" min="0.2" max="3" step="0.05" value="1">
+                    <span class="setting-value" id="set-ads-val">1.00x</span>
+                </label>
+                <label class="setting-row setting-toggle" for="set-invert">
+                    <span class="setting-label">INVERT VERTICAL LOOK</span>
+                    <input id="set-invert" type="checkbox">
+                </label>
+                <div class="settings-hint">Scoped aim is FOV-normalised, so 1.00x matches your hipfire feel on screen.</div>
+            </div>
+
             <button id="btn-play">CLICK TO DROP IN</button>
             <div class="hint">Pointer Lock captures true mouse aim. Press ESC anytime to release mouse.</div>
         </div>

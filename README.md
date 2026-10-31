@@ -22,6 +22,12 @@ Run the movement and gunplay regression checks with `npm test`.
 
 The current mode uses seven respawning practice bots. It does not include multiplayer or enemy return fire.
 
+## Aim settings
+
+The pause menu has hipfire and ADS sensitivity multipliers (0.20x–3.00x) plus inverted vertical aim.
+They are saved to `localStorage` and applied live. Scoped look is normalised against the rendered FOV,
+so 1.00x ADS moves the same number of pixels per mouse count as hipfire instead of feeling 4.7x faster.
+
 ## Visuals
 
 The weapon renders through a separate 62-degree camera, with dedicated lighting and environment reflections.
