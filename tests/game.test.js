@@ -65,7 +65,7 @@ test('Q and E lean the camera left and right', () => {
     assert.ok(p.lean > 0.9);
     assert.ok(p.leanOffset > 0.35);
     assert.ok(p.camera.position.x > p.position.x + 0.35);
-    assert.ok(p.camera.rotation.z < -0.1);
+    assert.ok(p.camera.rotation.z < -0.05);
 
     p.onKeyChange('KeyE', false);
     p.onKeyChange('KeyQ', true);
@@ -73,7 +73,7 @@ test('Q and E lean the camera left and right', () => {
     assert.ok(p.lean < -0.9);
     assert.ok(p.leanOffset < -0.35);
     assert.ok(p.camera.position.x < p.position.x - 0.35);
-    assert.ok(p.camera.rotation.z > 0.1);
+    assert.ok(p.camera.rotation.z > 0.05);
 
     p.onKeyChange('KeyQ', false);
     for (let i = 0; i < 60; i++) p.update(1 / 60);
@@ -92,6 +92,21 @@ test('leaning stops before entering cover', () => {
     assert.ok(p.lean > 0.9);
     assert.ok(p.leanOffset > 0.1 && p.leanOffset < 0.35, `lean offset ${p.leanOffset}`);
     assert.ok(p.camera.position.x < 0.5);
+});
+
+test('rifle tilts in place instead of orbiting the eye while peeking', () => {
+    class TestWeapon extends SniperWeapon {
+        loadAssets() {}
+        setupInput() {}
+    }
+    const movement = player();
+    const weapon = new TestWeapon(new THREE.Scene(), movement.camera, movement);
+    movement.lean = 1;
+    movement.camera.rotation.z = -movement.leanMaxRoll;
+    weapon.update(1 / 60);
+    assert.ok(weapon.weaponGroup.rotation.z < -0.05);
+    assert.ok(Math.abs(weapon.weaponGroup.position.x - weapon.hipPos.x) < 0.01);
+    assert.ok(Math.abs(weapon.weaponGroup.position.y - weapon.hipPos.y) < 0.01);
 });
 
 test('slopes support continuous uphill movement', () => {

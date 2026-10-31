@@ -51,8 +51,9 @@ export class MovementController {
         };
 
         // Peek / lean (Q left, E right)
-        this.leanMaxOffset = 0.42;
-        this.leanMaxRoll = 0.16;
+        this.leanMaxOffset = 0.40;
+        this.leanMaxRoll = 0.105;
+        this.leanMaxDip = 0.055;
         this.lean = 0;
         this.leanTarget = 0;
         this.leanOffset = 0;
@@ -365,15 +366,17 @@ export class MovementController {
 
         // Peek / lean: slide the eye sideways and roll the head, stopping at cover.
         this.leanTarget = (this.keys.leanRight ? 1 : 0) - (this.keys.leanLeft ? 1 : 0);
-        this.lean = THREE.MathUtils.damp(this.lean, this.leanTarget, 14.0, delta);
+        this.lean = THREE.MathUtils.damp(this.lean, this.leanTarget, 12.0, delta);
         const leanRight = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+        // Leaning drops the shoulder a little, so the eye arcs instead of sliding flat.
+        const leanDip = -Math.abs(this.lean) * this.leanMaxDip;
         const leanWanted = this.lean * this.leanMaxOffset;
-        this.leanOffset = this.resolveLean(leanWanted, leanRight, bobX, bobY, colliders);
+        this.leanOffset = this.resolveLean(leanWanted, leanRight, bobX, bobY + leanDip, colliders);
 
         // Apply to Camera
         this.camera.position.set(
             this.position.x + bobX,
-            this.position.y + bobY,
+            this.position.y + bobY + leanDip,
             this.position.z
         ).addScaledVector(leanRight, this.leanOffset);
 

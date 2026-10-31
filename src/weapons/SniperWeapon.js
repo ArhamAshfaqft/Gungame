@@ -428,6 +428,9 @@ export class SniperWeapon {
         this.recoilRot.y = THREE.MathUtils.damp(this.recoilRot.y, 0, this.recoilRecoverySpeed, delta);
         this.recoilRot.z = THREE.MathUtils.damp(this.recoilRot.z, 0, this.recoilRecoverySpeed, delta);
 
+        // Lean keeps the rifle anchored to the shoulder: it tilts in place instead of orbiting the eye.
+        const leanRoll = this.camera.rotation.z;
+
         // 10. Update the shared weapon and arms rig.
         this.weaponGroup.position.set(
             this.currentPos.x + this.recoilPos.x + swayX + bobX,
@@ -438,11 +441,8 @@ export class SniperWeapon {
         this.weaponGroup.rotation.set(
             this.currentRot.x + this.recoilRot.x,
             this.currentRot.y + this.recoilRot.y + swayX * 1.5,
-            this.currentRot.z + this.recoilRot.z + boltRollZ
+            this.currentRot.z + this.recoilRot.z + boltRollZ + leanRoll
         );
-
-        // The viewmodel camera shares the world camera's strafe/peek roll so the rifle tilts with the view.
-        this.viewmodelCamera.rotation.z = this.camera.rotation.z;
 
         this.armsRig?.updateView(delta, this);
 
