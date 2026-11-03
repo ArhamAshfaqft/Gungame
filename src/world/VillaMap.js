@@ -206,7 +206,7 @@ export class VillaMap{
   const group=new THREE.Group();group.position.set(x,y,z);group.rotation.y=rot;this.scene.add(group);const solids=[];
   const part=(a,b,c,w,h,d,mat,solid)=>{const mesh=this.box(a,b,c,w,h,d,mat,solid,!solid);mesh.removeFromParent();group.add(mesh);if(solid)solids.push(mesh);return mesh;};
   const seat=part(0,.46,0,.62,.12,.6,'ochre',true);part(0,.84,-.27,.62,.72,.08,'ochre',true);
-  const legs=[];for(const a of [-1,1])for(const b of [-1,1]){const leg=part(a*.24,.22,b*.23,.04,.44,.04,'walnut',false);leg.userData.woodHealth=65;legs.push(leg);}group.userData.supportParts=legs;group.userData.supportDrop=.4;
+  const legs=[];for(const a of [-1,1])for(const b of [-1,1]){const leg=part(a*.24,.22,b*.23,.04,.44,.04,'walnut',false);leg.userData.woodHealth=65;leg.userData.supportLeg=true;legs.push(leg);}group.userData.supportParts=legs;group.userData.supportDrop=.4;
   group.updateMatrixWorld(true);for(const mesh of solids)mesh.userData.collider.setFromObject(mesh);registerFloorFixture(this,group,solids,rectangularFeet(.48,.46));return seat;
  }
  bedroom(x,y,z,guest=false){

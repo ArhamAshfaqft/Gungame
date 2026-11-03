@@ -3,6 +3,7 @@ import {DestructionWorkers} from './DestructionWorkers.js';
 import {FrameWorkQueue} from './FrameWorkQueue.js';
 import {snapshotBlast,computeBlastPlan} from './BlastPlanning.js';
 import {markOperation,geometryRevision,packOperation,applyOperation,runOperation} from './GeometryJobs.js';
+import {removeProp} from '../world/MaterialProps.js';
 import {removeSurfaceMark} from '../world/SurfaceDecal.js';
 
 const pipelines=new WeakMap();
@@ -49,8 +50,8 @@ export class DestructionPipeline{
   this.pool.run('geometry',packOperation(op)).then(result=>this.task(()=>{
    if(job.done)return;
    if(op.mesh.visible&&geometryRevision(op.mesh)!==revision){this.dispatch(job);return;}
-   try{const value=applyOperation(op,result);job.op=null;this.advance(job,value);}catch(error){this.stats.errors.push(String(error.stack||error));this.finish(job);}
-  },op.kind),()=>this.task(()=>{if(job.done)return;this.stats.fallbacks++;try{const value=runOperation(op);job.op=null;this.advance(job,value);}catch(error){this.stats.errors.push(String(error.stack||error));this.finish(job);}},'fallback'));
+   try{const value=applyOperation(op,result);if(!op.mesh.visible)removeProp(op.mesh,this.map.colliders);this.map.surfaceDamage?.consumeSeveredStub(op.mesh);job.op=null;this.advance(job,value);}catch(error){this.stats.errors.push(String(error.stack||error));this.finish(job);}
+  },op.kind),()=>this.task(()=>{if(job.done)return;this.stats.fallbacks++;try{const value=runOperation(op);this.map.surfaceDamage?.consumeSeveredStub(op.mesh);job.op=null;this.advance(job,value);}catch(error){this.stats.errors.push(String(error.stack||error));this.finish(job);}},'fallback'));
  }
  refreshMark(entry,removed){
   if(entry.pending||entry.removed)return;entry.pending=true;
@@ -60,7 +61,7 @@ export class DestructionPipeline{
  // A new bullet on a pending mesh must see every earlier blast hit immediately.
  // Finish that mesh locally and ignore its stale worker replies; never overwrite
  // a newer hole, resurrect a removed object, or delay projectile penetration.
- flush(mesh){const run=op=>{op.colliders=this.map.colliders;return runOperation(op);};let list=this.jobs.get(mesh);while(list?.length){const job=list[0];try{job.generator??=job.factory();let step=job.op?job.generator.next(run(job.op)):job.generator.next();job.op=null;while(!step.done)step=job.generator.next(run(step.value));}finally{this.finish(job);}list=this.jobs.get(mesh);}}
+ flush(mesh){const run=op=>{op.colliders=this.map.colliders;const value=runOperation(op);this.map.surfaceDamage?.consumeSeveredStub(op.mesh);return value;};let list=this.jobs.get(mesh);while(list?.length){const job=list[0];try{job.generator??=job.factory();let step=job.op?job.generator.next(run(job.op)):job.generator.next();job.op=null;while(!step.done)step=job.generator.next(run(step.value));}finally{this.finish(job);}list=this.jobs.get(mesh);}}
  whenIdle(){if(!this.plans&&!this.jobs.size&&!this.frames.tasks.length)return Promise.resolve();return new Promise(resolve=>this.waiters.push(resolve));}
  checkIdle(){if(!this.plans&&!this.jobs.size&&!this.frames.tasks.length)for(const resolve of this.waiters.splice(0))resolve();}
  dispose(){this.closed=true;this.pool.dispose();this.frames.dispose();this.jobs.clear();pipelines.delete(this.map.scene);for(const resolve of this.waiters.splice(0))resolve();}

@@ -32,6 +32,16 @@ export function severSlenderWood(mesh,point,colliders){
  if((mesh.userData.jointCuts||0)>=6)return false;
  mesh.geometry.computeBoundingBox();const box=mesh.geometry.boundingBox,size=box.getSize(new THREE.Vector3()),axes=['x','y','z'].sort((a,b)=>size[b]-size[a]);
  if(size[axes[0]]<.4||size[axes[1]]>.18||size[axes[2]]>.12)return false;
+ // A bearing leg is not an anchored rail. A round that cuts it breaks the whole leg off:
+ // the leg drops into the debris pool and the chair loses that support instead of
+ // balancing on a stump. The visual is a real falling leg, not a vanished part.
+ if(mesh.userData.supportLeg){
+  mesh.userData.severedStub={min:box.min.toArray(),max:box.max.toArray()};
+  mesh.userData.jointCuts=(mesh.userData.jointCuts||0)+1;
+  mesh.userData.legSevered=true;
+  removeProp(mesh,colliders);
+  return true;
+ }
  const axis=axes[0],normal=new THREE.Vector3();normal[axis]=1;normal[axes[1]]=.11*Math.sin(point[axis]*19);normal[axes[2]]=.16*Math.cos(point[axis]*13);
  const half=Math.max(.08,Math.min(.16,size[axis]*.1));
  const projection=normal.dot(point),planes=[new THREE.Plane(normal.clone(),-projection-half),new THREE.Plane(normal.clone().negate(),projection-half)];

@@ -25,6 +25,26 @@ test('a shot-off chair support starts its physics response immediately before th
  assert.ok(r.body,'the structural hit cannot wait for a cosmetic decal or a room-wide scan');tick(m,300);
  assert.ok(Math.abs(f.object.quaternion.z)+Math.abs(f.object.quaternion.x)>.1,'the surviving footprint cannot keep an unsupported chair upright');
 });
+test('a pistol round breaks a chair leg off and drops it as debris',()=>{
+ const m=make(),f=m.floorFixtures.find(f=>f.object.userData.supportParts),leg=f.object.userData.supportParts[0];
+ leg.geometry.computeBoundingBox();const height=leg.geometry.boundingBox.max.y-leg.geometry.boundingBox.min.y;
+ hit(m,leg,V(0,0,.021),'pistol');hit(m,leg,V(0,0,.021),'pistol');
+ assert.equal(leg.userData.jointCuts,1);assert.equal(leg.userData.legSevered,true);
+ assert.equal(leg.visible,false,'the whole leg breaks away instead of holding the chair on a stump');
+ assert.ok(m.debris.pieces.length>0,'the leg is falling as pooled debris');
+ const piece=m.debris.pieces.at(-1),box=piece.shape.elements;assert.ok(box.some(v=>Math.abs(v)>height*.25),'the debris piece is a leg-sized piece, not a chip');
+ assert.equal(leg.userData.severedStub,undefined,'the debris hand-off is consumed once');
+ tick(m,300);assert.ok(m.environment.byObject.get(f.object).body);
+});
+test('a chair collapses once pistol rounds break its bearing legs off',()=>{
+ const m=make(),f=m.floorFixtures.find(f=>f.object.userData.supportParts);
+ for(const leg of f.object.userData.supportParts){hit(m,leg,V(0,0,.021),'pistol');hit(m,leg,V(0,0,.021),'pistol');}
+ assert.ok(f.object.userData.supportParts.every(leg=>leg.userData.legSevered&&!leg.visible));
+ tick(m,420);
+ assert.ok(f.object.position.y<3.39,'the chair drops onto the floor instead of standing on stumps');
+ assert.ok(m.debris.pieces.length>=4,'each broken leg stays on the floor as debris');
+ assert.ok(m.environment.byObject.get(f.object).body);
+});
 test('sniper chips wooden finish over concrete; the concrete remains and further unrelated updates never repair the finish',()=>{
  const m=make(),mesh=m.floorSurfaces.find(mesh=>mesh.userData.construction==='finish'&&mesh.position.y>6),box=mesh.geometry.boundingBox,local=box.getCenter(V());local.y=box.max.y;
  hit(m,mesh,local,'primary',V(0,1,0));assert.ok(mesh.userData.surfaceCuts>0);const source=mesh.geometry;

@@ -71,6 +71,8 @@ path. Do not mutate geometry without invalidating its support relationships.
 - **Wood:** localized accumulated stress, thickness and grain-aware chips,
   oblique severing of narrow timber, tapered penetrating channels, released boards
   and load-bearing assemblies. Floors retain their existing layered breach design.
+  A bearing furniture leg that is cut breaks off whole: the leg falls into the shared
+  debris pool and the chair loses that support instead of balancing on a stump.
 - **Stone, concrete and ceramic:** brittle/local fracture with material and
   thickness resistance. Thin stone worktops can fracture through their centres;
   dense slabs remain much tougher. A stone stair skin reacts over a stable ramp.

@@ -4,7 +4,7 @@ import {severSlenderWood} from '../world/MaterialProps.js';
 import {dentMetal} from '../world/MetalDeformation.js';
 import {projectSurfaceMark,projectFloorMark,surfaceRevision} from '../world/SurfaceDecal.js';
 
-const STATE=['fractureSolids','surfaceCuts','projectileHoles','jointCuts','woodAnchors','metalPrepared','metalDents'];
+const STATE=['fractureSolids','surfaceCuts','projectileHoles','jointCuts','woodAnchors','metalPrepared','metalDents','legSevered','severedStub'];
 export const geometryRevision=mesh=>`${mesh.geometry.uuid}:${mesh.geometry.attributes.position.version}:${mesh.geometry.index?.version||0}:${mesh.visible}`;
 export function packGeometry(g,keys=['position','normal','uv','color']){const attributes={};for(const key of keys)if(g.attributes[key]){const a=g.attributes[key];attributes[key]={array:a.array.slice(),itemSize:a.itemSize,normalized:a.normalized};}return{attributes,index:g.index?.array.slice()||null,type:g.type,parameters:g.parameters?{...g.parameters}:null,groups:g.groups.map(v=>({...v})),drawRange:{...g.drawRange}};}
 export function unpackGeometry(data){const g=new T.BufferGeometry();for(const [key,a] of Object.entries(data.attributes))g.setAttribute(key,new T.BufferAttribute(a.array,a.itemSize,a.normalized));if(data.index)g.setIndex(new T.BufferAttribute(data.index,1));g.type=data.type;if(data.parameters)g.parameters=data.parameters;g.groups=data.groups||[];if(data.drawRange)g.setDrawRange(data.drawRange.start,data.drawRange.count);g.computeBoundingBox();g.computeBoundingSphere();return g;}

@@ -44,7 +44,26 @@ export class SurfaceDamage{
  hit(hit,slot,direction,options={}){
   pipelineFor(this.scene)?.flush(hit.object);
   const steps=this.hitSteps(hit,slot,direction,options);let step=steps.next();
-  while(!step.done){const op=step.value;if(op.kind==='sever')op.colliders=this.colliders;step=steps.next(runOperation(op));}return step.value;
+  while(!step.done){const op=step.value;if(op.kind==='sever')op.colliders=this.colliders;step=steps.next(runOperation(op));}
+  this.consumeSeveredStub(hit.object);return step.value;
+ }
+ // The lower half of a severed bearing leg becomes one pooled debris piece. No rigid
+ // body, material or geometry variant is created, so the cost is a single spawn per cut.
+ consumeSeveredStub(mesh){
+  const stub=mesh?.userData?.severedStub;if(!stub)return;
+  delete mesh.userData.severedStub;
+  const min=new THREE.Vector3().fromArray(stub.min),max=new THREE.Vector3().fromArray(stub.max),size=new THREE.Vector3().subVectors(max,min);
+  if(Math.min(size.x,size.y,size.z)<.004)return;
+  mesh.updateWorldMatrix(true,false);
+  const centre=mesh.localToWorld(new THREE.Vector3().addVectors(min,max).multiplyScalar(.5));
+  const rotation=mesh.getWorldQuaternion(new THREE.Quaternion());
+  size.multiply(mesh.getWorldScale(new THREE.Vector3()));
+  const shape=new THREE.Matrix4().compose(new THREE.Vector3(),rotation,size);
+  const velocity=new THREE.Vector3((Math.random()-.5)*.7,-.5-Math.random()*.7,(Math.random()-.5)*.7);
+  const spin=new THREE.Vector3(Math.random()*1.6-.8,Math.random()*1.6-.8,Math.random()*1.6-.8);
+  const map=environmentOf(mesh)?.map;
+  if(map?.debris)map.debris.spawn(centre,velocity,shape,spin,14,new THREE.Color(0x8a5a34));
+  else this.pools.wood.spawn(centre,velocity,shape,spin,10);
  }
  *hitSteps(hit,slot,direction,{panel=false,distance=hit.distance||0,damage,energy,blast=false,blastOrigin=null}={},deferred=false){
   const mesh=hit.object;if(!mesh?.isMesh)return;if(!mesh.visible)return{penetrates:true,damageMultiplier:1,remainingEnergy:energy??projectileEnergy(slot,distance)};if(!deferred){mesh.userData.renderBatch?.detach(mesh);mesh.userData.motionBatch?.detach(mesh);}
@@ -120,7 +139,7 @@ export class SurfaceDamage{
   }
   // Thick boxes retain collision; small completely destroyed wooden trims release theirs.
   if(kind==='wood'&&!panel){const size=box.getSize(new THREE.Vector3()),small=Math.max(size.x,size.y,size.z)<.65||Math.min(size.x,size.y,size.z)<.08&&Math.max(size.x,size.y,size.z)<2;
-   if((small||mesh.userData.woodHealth)&&(damageCell?.totalStrength||0)>=(mesh.userData.woodHealth||240)){
+   if(!mesh.userData.legSevered&&(small||mesh.userData.woodHealth)&&(damageCell?.totalStrength||0)>=(mesh.userData.woodHealth||240)){
     if(mesh.userData.onMaterialBreak)mesh.userData.onMaterialBreak(hit);
     else if(environmentOf(mesh)&&Math.max(size.x,size.y,size.z)>.35&&!mesh.userData.woodHealth)environmentOf(mesh).release(mesh,hit.point,direction);
     else removeProp(mesh,this.colliders);

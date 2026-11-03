@@ -294,7 +294,7 @@ limited to eight hits, 128 solid fragments and 50,000 vertices per object.
 
 
 
-### Villa Solstice — flagship map foundation
+### Villa Solstice ï¿½ flagship map foundation
 
 The default game route now loads an original modern villa. Use `/?map=villa` for the residence or
 `/?map=training` for the preserved arena and its rebuilding practice room. The pause/start menu
@@ -352,6 +352,9 @@ meshes and furniture share batches until first damage, at which point that indiv
 returns to ordinary rendering with its original collider and attached details. This preserves bullet
 marks and concrete chips without issuing a separate draw for every intact object. Batched ray hits
 also honour line-of-sight exclusions, so a panel cannot shield itself from the explosion targeting it.
+
+Bearing chair legs break off when cut: the leg falls into the shared debris pool and the chair loses
+that support, at any damage source. No new rigid body, material or geometry variant is created.
 
 Validation includes player movement through both staircase stacks and the annex entry, direct gunfire,
 glass shattering, a grenade-created walk-through wall breach, falling through a destroyed timber floor,
