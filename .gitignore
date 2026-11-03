@@ -9,9 +9,11 @@ artifacts/
 game-check.png
 downloaded_assets/
 
-# Source art. 110 MB, above GitHub's 100 MB per-file limit.
-# The exported runtime asset is committed at public/assets/operators/swat.glb.
+# Large originals are local source art, not needed to run the game.
+# Runtime exports are included under public/assets.
 Ch15_nonPBR.fbx
+Basic Shooter Pack.zip
+Pistol_Handgun Locomotion Pack.zip
 
 # Non-core asset packs. Kept on disk for local experiments, not committed.
 public/assets/arsenal/
@@ -21,6 +23,7 @@ public/assets/textures/ph_blocks_*.webp
 public/assets/weapons/*.glb
 !public/assets/weapons/m98b.glb
 !public/assets/weapons/scope.glb
+!public/assets/weapons/m9.glb
 
 # Editor / OS noise
 .vscode/

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { soundEngine } from '../audio/SoundEngine.js';
+import { createFracturedPanel, fractureCells } from './FractureGeometry.js';
+import { DebrisPool } from './DebrisPool.js';
 
 const ROOM = { width: 10, depth: 8, height: 3.2, thickness: 0.24 };
 const DOOR = { width: 1.12, height: 2.16, cols: 8, rows: 16, maxDamage: 450 };
@@ -54,7 +56,8 @@ export class TrainingRoom {
         this.scene = scene;
         this.colliders = colliders;
         this.origin = new THREE.Vector3(0, 0, 44);
-        this.debris = [];
+        this.shadowsDirty = true;
+        this.hitSequence = 0;
         this.brokenBoards = new Set();
         this.glassPanes = [];
         this.canInteract = false;
@@ -64,16 +67,16 @@ export class TrainingRoom {
 
         this.materials = {
             wall: new THREE.MeshStandardMaterial({
-                color: 0x9d968a, map: textures.concreteColor, normalMap: textures.concreteNormal,
+                color: 0x9d968a, map: textures.concreteColor || null, normalMap: textures.concreteNormal || null,
                 roughness: 0.88, metalness: 0.05
             }),
             wood: new THREE.MeshStandardMaterial({
-                color: 0xffffff, map: woodTexture, roughness: 0.82, metalness: 0.02
+                color: 0xffffff, map: woodTexture, roughness: 0.82, metalness: 0.02, vertexColors: true
             }),
             frame: new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.78 }),
             metal: new THREE.MeshStandardMaterial({ color: 0x3a4448, roughness: 0.6, metalness: 0.5 }),
             roof: new THREE.MeshStandardMaterial({
-                color: 0x6d6a63, map: textures.concreteColor, normalMap: textures.concreteNormal,
+                color: 0x6d6a63, map: textures.concreteColor || null, normalMap: textures.concreteNormal || null,
                 roughness: 0.9, metalness: 0.05
             }),
             glass: new THREE.MeshStandardMaterial({
@@ -87,8 +90,12 @@ export class TrainingRoom {
             })
         };
 
-        this.splinterGeometry = new THREE.BoxGeometry(0.035, 0.022, 0.095);
-        this.shardGeometry = new THREE.PlaneGeometry(0.11, 0.14);
+        this.woodDebris = new DebrisPool(scene, new THREE.BoxGeometry(1, 1, 1), this.materials.splinter, 192);
+        this.materials.wood.userData.surface='wood';this.materials.frame.userData.surface='wood';this.materials.metal.userData.surface='metal';this.materials.glass.userData.surface='glass';
+        const shard = new THREE.BufferGeometry();
+        shard.setAttribute('position', new THREE.Float32BufferAttribute([-1 / 3, -1 / 3, 0, 2 / 3, -1 / 3, 0, -1 / 3, 2 / 3, 0], 3));
+        shard.computeVertexNormals();
+        this.glassDebris = new DebrisPool(scene, shard, this.materials.shard, 256);
 
         this.build();
     }
@@ -174,38 +181,14 @@ export class TrainingRoom {
         this.doorHinge.position.set(x0 - DOOR.width / 2, 0, z);
         this.scene.add(this.doorHinge);
 
-        const cellW = DOOR.width / DOOR.cols;
-        const cellH = DOOR.height / DOOR.rows;
-        this.doorMesh = new THREE.InstancedMesh(
-            // Boards overlap slightly so a shot can never slip through a seam between them.
-            new THREE.BoxGeometry(cellW + 0.004, cellH + 0.004, 0.055),
-            this.materials.wood,
-            DOOR.cols * DOOR.rows
-        );
+        const panel = createFracturedPanel(DOOR.width, DOOR.height, 0.055, this.materials.wood, DOOR.cols, DOOR.rows);
+        this.doorMesh = panel.mesh;
+        this.doorPieces = panel.pieces;
+        this.originalDoorIndices = this.doorMesh.geometry.index.array.slice();
         this.doorMesh.castShadow = true;
         this.doorMesh.receiveShadow = true;
         this.doorMesh.userData.isShootable = true;
-        this.doorMesh.userData.breakable = { takeBulletHit: (hit, damage) => this.hitDoor(hit, damage) };
-
-        this.boardMatrices = [];
-        const matrix = new THREE.Matrix4();
-        const tint = new THREE.Color();
-        for (let row = 0; row < DOOR.rows; row++) {
-            for (let col = 0; col < DOOR.cols; col++) {
-                const index = row * DOOR.cols + col;
-                // Alternate the board depth by checkerboard so the overlaps never z-fight.
-                const depth = (row + col) % 2 === 0 ? -0.0015 : 0.0015;
-                matrix.makeTranslation((col + 0.5) * cellW, (row + 0.5) * cellH, depth);
-                this.boardMatrices.push(matrix.clone());
-                this.doorMesh.setMatrixAt(index, matrix);
-                // Alternate plank tones so the door still reads as boards even with no gaps.
-                const shade = 0.93 + Math.random() * 0.1;
-                tint.setRGB(shade, shade, shade);
-                this.doorMesh.setColorAt(index, tint);
-            }
-        }
-        this.doorMesh.instanceMatrix.needsUpdate = true;
-        this.doorMesh.instanceColor.needsUpdate = true;
+        this.doorMesh.userData.breakable = { takeBulletHit: (hit, damage, direction) => this.hitDoor(hit, damage, direction) };
         this.doorHinge.add(this.doorMesh);
 
         // Lever handle on the outside face.
@@ -217,7 +200,12 @@ export class TrainingRoom {
         const lever = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.035, 0.035), this.materials.metal);
         lever.position.set(DOOR.width - 0.22, 1.02, -0.085);
         this.doorHandle.add(lever);
-        this.doorHandle.traverse(mesh => { if (mesh.isMesh) mesh.userData.isShootable = true; });
+        this.doorHandle.traverse(mesh => {
+            if (mesh.isMesh) {
+                mesh.userData.isShootable = true;
+                mesh.userData.breakable = this.doorMesh.userData.breakable;
+            }
+        });
         this.doorHinge.add(this.doorHandle);
 
         // Door frame trim.
@@ -267,8 +255,13 @@ export class TrainingRoom {
         pane.userData.isShootable = true;
         pane.userData.shattered = false;
         pane.userData.resetTimer = 0;
-        pane.userData.breakable = { takeBulletHit: hit => this.shatterGlass(pane, hit) };
+        pane.userData.width = width;
+        pane.userData.height = height;
+        pane.userData.breakable = { takeBulletHit: (hit, damage, direction) => this.shatterGlass(pane, hit, direction) };
         group.add(pane);
+        pane.updateWorldMatrix(true, false);
+        pane.userData.collider = new THREE.Box3().setFromObject(pane).expandByScalar(0.015);
+        this.colliders.push(pane.userData.collider);
 
         const bar = (size, pos) => {
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), this.materials.metal);
@@ -311,84 +304,116 @@ export class TrainingRoom {
         const porch = new THREE.PointLight(0xffc98a, 9, 8, 2);
         porch.position.set(this.origin.x, 2.5, this.frontZ - 0.45);
         this.scene.add(porch);
+        bulb.userData.isShootable=true;bulb.userData.surface='glass';bulb.userData.breakableLight={lights:[porch],broken:false};
+        const insideBulb=new THREE.Mesh(new THREE.SphereGeometry(.11,10,8),new THREE.MeshBasicMaterial({color:0xffe3b0}));insideBulb.position.copy(interior.position);insideBulb.userData.isShootable=true;insideBulb.userData.surface='glass';insideBulb.userData.breakableLight={lights:[interior],broken:false};this.scene.add(insideBulb);
     }
 
-    // Sniper round smashes the boards it lands on plus a few around the impact.
+    get debris() { return [...this.woodDebris.pieces, ...this.glassDebris.pieces]; }
+
     hitDoor(hit, damage = 125, direction = null) {
-        if (this.door.destroyed) return;
-        const id = hit.instanceId;
-        if (id !== undefined) {
-            const col = id % DOOR.cols;
-            const row = Math.floor(id / DOOR.cols);
-            this.breakBoard(id);
-            for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1]]) {
-                if (Math.random() > 0.55) continue;
-                const c = col + dc;
-                const r = row + dr;
-                if (c >= 0 && c < DOOR.cols && r >= 0 && r < DOOR.rows) this.breakBoard(r * DOOR.cols + c);
-            }
+        if (this.door.destroyed) return { penetrates: true, damageMultiplier: 0.65 };
+        this.doorMesh.updateWorldMatrix(true, false);
+        const local = this.doorMesh.worldToLocal(hit.point.clone());
+        const id = Number.isInteger(hit.instanceId) ? hit.instanceId : this.doorPieces.reduce((best, piece) =>
+            piece.center.distanceToSquared(new THREE.Vector2(local.x, local.y)) < this.doorPieces[best].center.distanceToSquared(new THREE.Vector2(local.x, local.y)) ? piece.id : best, 0);
+        if (!this.doorPieces[id] || this.brokenBoards.has(id)) return;
+        const center = this.doorPieces[id].center;
+        // Elongated fractures follow the grain, with deterministic variation for replay/network events.
+        const radius = THREE.MathUtils.clamp(0.12 + damage * 0.00035, 0.13, 0.23);
+        for (const piece of this.doorPieces) {
+            const dx = (piece.center.x - center.x) / radius;
+            const dy = (piece.center.y - center.y) / (radius * 1.8);
+            if (piece.id === id || dx * dx + dy * dy < 1) this.breakBoard(piece.id, direction);
         }
         this.door.damage += damage;
         soundEngine.playWoodHit();
-        const burst = direction ? direction.clone().negate() : new THREE.Vector3(0, 0, -1);
-        this.spawnSplinters(hit.point, burst);
-        if (this.door.damage >= DOOR.maxDamage) this.breakDoor();
+        const impulse = direction?.clone().normalize() || new THREE.Vector3(0, 0, -1);
+        this.spawnSplinters(hit.point, impulse);
+        this.shadowsDirty = true;
+        if (this.door.damage >= DOOR.maxDamage) this.breakDoor(impulse);
+        // An intact wooden leaf stops the round; later rounds can travel through the actual hole.
+        return { penetrates: false };
     }
 
-    breakBoard(index) {
-        if (this.brokenBoards.has(index)) return;
+    breakBoard(index, direction = null) {
+        if (this.brokenBoards.has(index) || !this.doorPieces[index]) return;
         this.brokenBoards.add(index);
-        const matrix = new THREE.Matrix4().makeTranslation(0, -999, 0);
-        this.doorMesh.setMatrixAt(index, matrix);
-        this.doorMesh.instanceMatrix.needsUpdate = true;
+        const piece = this.doorPieces[index];
+        const attribute = this.doorMesh.geometry.index;
+        attribute.array.fill(0, piece.start, piece.start + piece.count);
+        attribute.needsUpdate = true;
+        const center = this.doorMesh.localToWorld(new THREE.Vector3(piece.center.x, piece.center.y, 0));
+        const size = piece.bounds.getSize(new THREE.Vector2());
+        this.spawnDebris('wood', center, direction || new THREE.Vector3(0, 0, -1), new THREE.Vector3(size.x * 0.85, size.y * 0.85, 0.035));
+        this.shadowsDirty = true;
     }
 
-    breakDoor() {
+    breakDoor(direction = new THREE.Vector3(0, 0, -1)) {
+        if (this.door.destroyed) return;
         this.door.destroyed = true;
         this.door.open = false;
         this.doorHandle.visible = false;
-        for (let i = 0; i < DOOR.cols * DOOR.rows; i++) this.breakBoard(i);
+        this.doorMesh.userData.isShootable = false;
+        for (let i = 0; i < this.doorPieces.length; i++) this.breakBoard(i, direction);
         this.removeDoorCollider();
         this.door.resetTimer = RESPAWN_DELAY;
-        const center = new THREE.Vector3(this.origin.x, 1.1, this.frontZ);
-        for (let i = 0; i < 18; i++) this.spawnDebris('wood', center, new THREE.Vector3(0, 0, -1));
+        this.shadowsDirty = true;
         soundEngine.playDoorBreak();
     }
 
-    shatterGlass(pane, hit) {
-        if (pane.userData.shattered) return;
+    shatterGlass(pane, hit, direction = null) {
+        const result = { penetrates: true, damageMultiplier: 0.8 };
+        if (pane.userData.shattered) return result;
         pane.userData.shattered = true;
         pane.visible = false;
         pane.userData.isShootable = false;
         pane.userData.resetTimer = RESPAWN_DELAY;
-        const point = hit?.point?.clone() || pane.getWorldPosition(new THREE.Vector3());
-        const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(pane.getWorldQuaternion(new THREE.Quaternion()));
-        for (let i = 0; i < 14; i++) this.spawnDebris('glass', point, normal);
+        const colliderIndex = this.colliders.indexOf(pane.userData.collider);
+        if (colliderIndex !== -1) this.colliders.splice(colliderIndex, 1);
+        pane.updateWorldMatrix(true, false);
+        const width = pane.userData.width, height = pane.userData.height;
+        const local = hit?.point ? pane.worldToLocal(hit.point.clone()) : new THREE.Vector3();
+        const cells = fractureCells(width, height, 5, 3, 811 + this.hitSequence++, new THREE.Vector2(local.x + width / 2, local.y + height / 2));
+        const normal = direction?.clone().normalize() || new THREE.Vector3(0, 0, 1).applyQuaternion(pane.getWorldQuaternion(new THREE.Quaternion()));
+        const lines = [];
+        for (const cell of cells) {
+            const polygon = cell.polygon.map(point => pane.localToWorld(new THREE.Vector3(point.x - width / 2, point.y - height / 2, 0)));
+            for (let i = 0; i < polygon.length; i++) lines.push(...polygon[i].toArray(), ...polygon[(i + 1) % polygon.length].toArray());
+            for (let i = 1; i < polygon.length - 1; i++) {
+                const a = polygon[0], b = polygon[i], c = polygon[i + 1];
+                const center = a.clone().add(b).add(c).multiplyScalar(1 / 3);
+                const shape = new THREE.Matrix4().makeBasis(b.clone().sub(a), c.clone().sub(a), normal);
+                const velocity = normal.clone().multiplyScalar(2.5 + Math.random() * 2).add(new THREE.Vector3(Math.random() - 0.5, 0.5 + Math.random(), Math.random() - 0.5));
+                this.glassDebris.spawn(center, velocity, shape, new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8), 3 + Math.random() * 2);
+            }
+        }
+        // A brief crack flash traces the actual fragment boundaries across the whole pane.
+        if (pane.userData.cracks) {
+            this.scene.remove(pane.userData.cracks);
+            pane.userData.cracks.geometry.dispose();
+            pane.userData.cracks.material.dispose();
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
+        const cracks = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: 0xd8f6ff, transparent: true, opacity: 0.8, depthWrite: false }));
+        pane.userData.cracks = cracks;
+        pane.userData.crackTimer = 0.12;
+        this.scene.add(cracks);
         soundEngine.playGlassBreak();
+        return result;
     }
 
     spawnSplinters(point, normal) {
-        for (let i = 0; i < 6; i++) this.spawnDebris('wood', point, normal);
+        for (let i = 0; i < 8; i++) this.spawnDebris('wood', point, normal);
     }
 
-    spawnDebris(kind, point, normal) {
-        const isWood = kind === 'wood';
-        const material = (isWood ? this.materials.splinter : this.materials.shard).clone();
-        material.transparent = true;
-        const mesh = new THREE.Mesh(isWood ? this.splinterGeometry : this.shardGeometry, material);
-        mesh.position.copy(point).addScaledVector(normal, 0.05);
-        mesh.scale.setScalar(isWood ? 0.6 + Math.random() * 0.8 : 0.5 + Math.random() * 0.9);
-        mesh.rotation.set(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
-        this.scene.add(mesh);
-        const velocity = normal.clone().multiplyScalar((isWood ? 3.5 : 2.6) * (0.4 + Math.random()))
-            .add(new THREE.Vector3((Math.random() - 0.5) * 3, 1.2 + Math.random() * 2.4, (Math.random() - 0.5) * 3));
-        this.debris.push({
-            mesh,
-            velocity,
-            spin: new THREE.Vector3(Math.random() * 6 - 3, Math.random() * 6 - 3, Math.random() * 6 - 3),
-            life: 2.2 + Math.random() * 1.2,
-            baseOpacity: isWood ? 1 : 0.85
-        });
+    spawnDebris(kind, point, normal, size = null) {
+        if (kind !== 'wood') return;
+        const shape = new THREE.Matrix4().compose(new THREE.Vector3(),
+            this.doorMesh.getWorldQuaternion(new THREE.Quaternion()), size || new THREE.Vector3(0.012 + Math.random() * 0.02, 0.04 + Math.random() * 0.08, 0.018));
+        const velocity = normal.clone().multiplyScalar(2 + Math.random() * 3)
+            .add(new THREE.Vector3((Math.random() - 0.5) * 2, 1 + Math.random() * 2, (Math.random() - 0.5) * 2));
+        this.woodDebris.spawn(point, velocity, shape, new THREE.Vector3(Math.random() * 8 - 4, Math.random() * 8 - 4, Math.random() * 8 - 4), 4 + Math.random() * 2);
     }
 
     removeDoorCollider() {
@@ -401,14 +426,18 @@ export class TrainingRoom {
     }
 
     rebuildDoor() {
-        for (const index of this.brokenBoards) this.doorMesh.setMatrixAt(index, this.boardMatrices[index]);
+        this.doorMesh.geometry.index.array.set(this.originalDoorIndices);
+        this.doorMesh.geometry.index.needsUpdate = true;
         this.brokenBoards.clear();
-        this.doorMesh.instanceMatrix.needsUpdate = true;
+        this.doorMesh.userData.isShootable = true;
+        this.shadowsDirty = true;
         this.doorHandle.visible = true;
         this.door.damage = 0;
         this.door.destroyed = false;
         this.door.open = false;
         this.door.openAmount = 0;
+        this.doorHinge.rotation.y = 0;
+        this.door.resetTimer = 0;
         this.addDoorCollider();
     }
 
@@ -417,7 +446,9 @@ export class TrainingRoom {
 
         // Door swing and its collision state.
         const target = this.door.open && !this.door.destroyed ? 1 : 0;
+        const previousAngle = this.door.openAmount;
         this.door.openAmount = THREE.MathUtils.damp(this.door.openAmount, target, 7, delta);
+        if (Math.abs(previousAngle - this.door.openAmount) > 0.0005) this.shadowsDirty = true;
         if (this.doorHinge) this.doorHinge.rotation.y = -this.door.openAmount * 1.7;
         const blocking = !this.door.destroyed && this.door.openAmount < 0.12;
         if (blocking) this.addDoorCollider();
@@ -429,38 +460,22 @@ export class TrainingRoom {
             if (this.door.resetTimer <= 0) this.rebuildDoor();
         }
         for (const pane of this.glassPanes) {
+            if (pane.userData.cracks?.visible) {
+                pane.userData.crackTimer -= delta;
+                pane.userData.cracks.visible = pane.userData.crackTimer > 0;
+            }
             if (!pane.userData.shattered) continue;
             pane.userData.resetTimer -= delta;
             if (pane.userData.resetTimer <= 0) {
                 pane.userData.shattered = false;
                 pane.visible = true;
                 pane.userData.isShootable = true;
+                if (!this.colliders.includes(pane.userData.collider)) this.colliders.push(pane.userData.collider);
             }
         }
 
-        // Debris physics.
-        for (let i = this.debris.length - 1; i >= 0; i--) {
-            const piece = this.debris[i];
-            piece.life -= delta;
-            piece.velocity.y -= 14 * delta;
-            piece.mesh.position.addScaledVector(piece.velocity, delta);
-            piece.mesh.rotation.x += piece.spin.x * delta;
-            piece.mesh.rotation.y += piece.spin.y * delta;
-            piece.mesh.rotation.z += piece.spin.z * delta;
-            if (piece.mesh.position.y < 0.03) {
-                piece.mesh.position.y = 0.03;
-                piece.velocity.set(0, 0, 0);
-                piece.spin.set(0, 0, 0);
-            }
-            if (piece.life < 0.7) {
-                piece.mesh.material.opacity = Math.max(0, piece.life / 0.7) * piece.baseOpacity;
-            }
-            if (piece.life <= 0) {
-                this.scene.remove(piece.mesh);
-                piece.mesh.material.dispose();
-                this.debris.splice(i, 1);
-            }
-        }
+        this.woodDebris.update(delta);
+        this.glassDebris.update(delta);
 
         // Interaction prompt.
         if (playerPos) {

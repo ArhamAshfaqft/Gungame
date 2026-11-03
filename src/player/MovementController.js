@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { soundEngine } from '../audio/SoundEngine.js';
+import { TACTICAL } from './TacticalTuning.js';
 
 // Keys the game owns while the pointer is locked. Tab and the Alt chords otherwise reach the browser.
 const BROWSER_GUARD_KEYS = new Set([
     'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyC', 'KeyQ', 'KeyE', 'KeyR', 'KeyX', 'KeyF',
     'Space', 'ShiftLeft', 'ShiftRight', 'AltLeft', 'AltRight', 'Tab',
+    'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'KeyG', 'KeyV',
     'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'
 ]);
 
@@ -13,16 +15,14 @@ export class MovementController {
         this.camera = camera;
         this.domElement = domElement;
 
-        // Configuration
-        this.runSpeed = 8.0;
-        this.sprintSpeed = 16.5;
-        this.slowWalkSpeed = 3.2;
-        this.crouchSpeed = 3.0;
-        this.slideInitialSpeed = 26.0;
-        this.slideMinSpeed = 10.0;
-        this.slideDecel = 22.0; // m/s^2 deceleration
-        this.jumpForce = 11.0;
-        this.gravity = 28.0;
+        Object.assign(this, TACTICAL);
+        this.isAiming = false;
+        this.isReloading = false;
+        this.sprintRecovery = 0;
+        this.sprintInterruptTimer = 0;
+        this.slideCooldownTimer = 0;
+        this.jumpCooldown = 0;
+        this.lastColliders = [];
 
         // Heights
         this.standHeight = 1.65;
@@ -31,22 +31,23 @@ export class MovementController {
         this.currentHeight = this.standHeight;
 
         // State
-        this.position = new THREE.Vector3(14, this.standHeight, 28);
+        this.position = new THREE.Vector3(2, this.standHeight, 34);
         this.velocity = new THREE.Vector3();
         this.isGrounded = false;
         this.isSprinting = false;
+        this.isCrouchRunning = false;
         this.isSliding = false;
         this.isCrouching = false;
         this.isWalking = false;
         this.stepDistance = 0;
         this.slideTimer = 0;
-        this.slideMaxDuration = 0.85;
+        this.slideMaxDuration = TACTICAL.slideMaxDuration;
         this.slideDirection = new THREE.Vector3();
         this.coyoteTime = 0;
 
         // Rotation & Mouse Look
         this.pitch = 0;
-        this.yaw = 0.2;
+        this.yaw = Math.PI;
         this.mouseSensitivity = 0.0022;
         this.hipSensitivity = 1;
         this.adsSensitivity = 1;
@@ -70,8 +71,8 @@ export class MovementController {
         };
 
         // Peek / lean (Q left, E right)
-        this.leanMaxOffset = 0.40;
-        this.leanMaxRoll = 0.105;
+        this.leanMaxOffset = TACTICAL.leanMaxOffset;
+        this.leanMaxRoll = TACTICAL.leanMaxRoll;
         this.leanMaxDip = 0.055;
         this.lean = 0;
         this.leanTarget = 0;
@@ -107,7 +108,7 @@ export class MovementController {
         window.addEventListener('blur', () => this.resetInput());
 
         document.addEventListener('mousemove', (e) => {
-            if (!this.isLocked) return;
+            if (!this.isLocked || this.isDisabled) return;
 
             const movementX = e.movementX || 0;
             const movementY = e.movementY || 0;
@@ -157,14 +158,18 @@ export class MovementController {
     }
 
     resetInput() {
+        this.isCrouchRunning = false;
         for (const key of Object.keys(this.keys)) this.keys[key] = false;
         this.mouseDelta.x = 0;
         this.mouseDelta.y = 0;
         this.isSprinting = false;
+        this.lean = this.leanTarget = this.leanOffset = 0;
+        this.sprintRecovery = 0;
         this.cancelSlide();
     }
 
     onKeyChange(code, isDown) {
+        if (this.isDisabled) return;
         switch (code) {
             case 'KeyW':
             case 'ArrowUp':
@@ -216,28 +221,30 @@ export class MovementController {
     }
 
     handleSlidePress() {
-        // Can slide if moving forward at high speed on ground
-        const horizontalSpeed = Math.hypot(this.velocity.x, this.velocity.z);
-        if (this.isGrounded && !this.isSliding && this.keys.forward && horizontalSpeed > 6.0) {
-            this.startSlide();
-        } else if (this.isSliding) {
-            // Slide cancel!
+        if (this.isSliding) {
             this.cancelSlide();
+            this.isCrouching = true;
+            return;
+        }
+        if (this.isGrounded && this.isSprinting && !this.isAiming && !this.isReloading && !this.isThrowing &&
+            this.slideCooldownTimer <= 0 && this.getSpeed() > this.sprintSpeed * 0.85) {
+            this.startSlide();
+        } else {
+            this.toggleCrouch();
         }
     }
 
     startSlide() {
         this.isSliding = true;
+        this.isCrouching = false;
         this.slideTimer = 0;
-
-        // Slide direction follows current forward look direction
-        const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
-        this.slideDirection.copy(forward).normalize();
-
-        // Speed burst
-        this.velocity.x = this.slideDirection.x * this.slideInitialSpeed;
-        this.velocity.z = this.slideDirection.z * this.slideInitialSpeed;
-
+        this.slideCooldownTimer = this.slideCooldown;
+        const speed = Math.min(this.slideInitialSpeed, this.getSpeed());
+        this.slideDirection.set(this.velocity.x, 0, this.velocity.z);
+        if (this.slideDirection.lengthSq() < 0.001) this.slideDirection.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+        this.slideDirection.normalize();
+        this.velocity.x = this.slideDirection.x * speed;
+        this.velocity.z = this.slideDirection.z * speed;
         soundEngine.playSlide();
     }
 
@@ -246,26 +253,41 @@ export class MovementController {
         this.slideTimer = 0;
     }
 
+    canStand(colliders = this.lastColliders) {
+        const feet = this.position.y - this.currentHeight;
+        return !colliders.some(box => !box.ramp &&
+            this.position.x > box.min.x - 0.4 && this.position.x < box.max.x + 0.4 &&
+            this.position.z > box.min.z - 0.4 && this.position.z < box.max.z + 0.4 &&
+            box.min.y < feet + this.standHeight + 0.05 && box.max.y > this.position.y + 0.02);
+    }
+
     toggleCrouch() {
-        // Crouching overrides a slide instead of stacking with it.
         if (this.isSliding) this.cancelSlide();
+        if (this.isCrouching && !this.canStand()) return false;
         this.isCrouching = !this.isCrouching;
+        return true;
+    }
+
+    requestWeaponReady() {
+        if (this.isSprinting || this.isSliding) this.sprintRecovery = this.sprintReadyTime;
+        this.sprintInterruptTimer = 0.4;
+        this.isSprinting = false;
+        if (this.isSliding) {
+            this.cancelSlide();
+            this.isCrouching = true;
+        }
     }
 
     handleJump() {
+        if (this.jumpCooldown > 0 || this.isCrouching || this.isSliding) return;
         if (this.isGrounded || this.coyoteTime > 0) {
-            if (this.isSliding) {
-                // COD SIGNATURE SLIDE-JUMP:
-                // Preserves horizontal slide momentum, lifts into the air!
-                this.isSliding = false;
-                this.velocity.y = this.jumpForce * 1.05;
-                // Slight forward boost out of slide
-                this.velocity.x *= 1.05;
-                this.velocity.z *= 1.05;
-            } else {
-                this.velocity.y = this.jumpForce;
+            this.velocity.y = this.jumpForce;
+            const speed = this.getSpeed();
+            if (speed > this.runSpeed) {
+                this.velocity.x *= this.runSpeed / speed;
+                this.velocity.z *= this.runSpeed / speed;
             }
-
+            this.jumpCooldown = 0.55;
             this.isGrounded = false;
             this.coyoteTime = 0;
             soundEngine.playJump();
@@ -273,7 +295,12 @@ export class MovementController {
     }
 
     update(delta, colliders = [], jumpPads = []) {
-        if (delta > 0.1) delta = 0.1; // clamp lag spikes
+        delta = Math.max(0, Math.min(delta, 0.1));
+        this.lastColliders = colliders;
+        this.slideCooldownTimer = Math.max(0, this.slideCooldownTimer - delta);
+        this.sprintInterruptTimer = Math.max(0, this.sprintInterruptTimer - delta);
+        this.sprintRecovery = Math.max(0, this.sprintRecovery - delta);
+        this.jumpCooldown = Math.max(0, this.jumpCooldown - delta);
 
         // 1. Horizontal Input & Direction
         const moveDir = new THREE.Vector3();
@@ -290,9 +317,15 @@ export class MovementController {
         // Slow states: holding Alt walks quietly, X toggles a crouch. Both cancel sprinting.
         this.isWalking = this.keys.walk && !this.isCrouching && !this.isSliding;
 
-        // Sprint logic
-        this.isSprinting = this.keys.sprint && this.keys.forward && !this.isSliding &&
-            !this.isCrouching && !this.keys.walk && this.isGrounded;
+        const wantsLean = this.keys.leanLeft !== this.keys.leanRight;
+        this.isCrouchRunning = this.isCrouching && this.keys.sprint && moveDir.lengthSq()>0 &&
+            this.isGrounded && !this.isSliding && !this.keys.walk && !this.isAiming && !this.isReloading &&
+            !this.isThrowing && !wantsLean && this.sprintInterruptTimer<=0;
+        const wasSprinting = this.isSprinting;
+        this.isSprinting = this.keys.sprint && this.keys.forward && !this.keys.backward && !this.isSliding &&
+            !this.isCrouching && !this.keys.walk && this.isGrounded && !this.isAiming && !this.isReloading && !this.isThrowing &&
+            !wantsLean && this.sprintInterruptTimer <= 0 && this.getAdsBlend() < 0.15;
+        if (wasSprinting && !this.isSprinting) this.sprintRecovery = this.sprintReadyTime;
 
         // 2. Movement state updates
         if (this.isSliding) {
@@ -304,7 +337,7 @@ export class MovementController {
 
             // Allow subtle steering during slide
             if (moveDir.lengthSq() > 0) {
-                this.slideDirection.lerp(moveDir, delta * 3.5).normalize();
+                this.slideDirection.lerp(moveDir, delta * 0.7).normalize();
             }
 
             this.velocity.x = this.slideDirection.x * newSpeed;
@@ -313,28 +346,36 @@ export class MovementController {
             // Slide ends if timer runs out or player stops moving
             if (this.slideTimer >= this.slideMaxDuration) {
                 this.cancelSlide();
+                this.isCrouching = true;
             }
         } else if (this.isGrounded) {
             // Normal Ground Movement
-            const targetSpeed = this.isCrouching ? this.crouchSpeed
+            let targetSpeed = this.isCrouching ? (this.isCrouchRunning ? this.crouchRunSpeed : this.crouchSpeed)
                 : this.isWalking ? this.slowWalkSpeed
                 : this.isSprinting ? this.sprintSpeed : this.runSpeed;
+            if (this.isAiming) targetSpeed = Math.min(targetSpeed, this.aimedSpeed);
+            if (wantsLean || Math.abs(this.lean) > 0.2) targetSpeed = Math.min(targetSpeed, this.leanSpeed);
+            if (this.isReloading) targetSpeed = Math.min(targetSpeed, 2.4);
+            if (this.keys.backward) targetSpeed *= 0.8;
+            else if (!this.keys.forward && (this.keys.left || this.keys.right)) targetSpeed *= 0.9;
+            this.isWading=!!colliders.waterAreas?.some(a=>this.position.x>a.minX&&this.position.x<a.maxX&&this.position.z>a.minZ&&this.position.z<a.maxZ&&this.position.y-this.currentHeight<a.surface-.1);
+            if(this.isWading)targetSpeed*=.58;
             const targetVx = moveDir.x * targetSpeed;
             const targetVz = moveDir.z * targetSpeed;
 
-            const accel = this.isSprinting ? 45.0 : this.isCrouching || this.isWalking ? 22.0 : 35.0;
+            const accel = moveDir.lengthSq() === 0 ? 24 : this.isSprinting ? 10 : 16;
             this.velocity.x = THREE.MathUtils.damp(this.velocity.x, targetVx, accel, delta);
             this.velocity.z = THREE.MathUtils.damp(this.velocity.z, targetVz, accel, delta);
         } else {
-            // Air Control (Bhop / Strafe)
+            // Limited airborne steering, without accumulating extra horizontal speed.
             if (moveDir.lengthSq() > 0) {
-                const airAccel = 18.0;
+                const airAccel = 2.0;
                 this.velocity.x += moveDir.x * airAccel * delta;
                 this.velocity.z += moveDir.z * airAccel * delta;
 
-                // Air drag limit (preserve high slide-jump speed without infinite acceleration)
+                // Jumping never carries sprint-speed acceleration into the air.
                 const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
-                const maxAirSpeed = 28.0;
+                const maxAirSpeed = this.runSpeed;
                 if (horizSpeed > maxAirSpeed) {
                     this.velocity.x = (this.velocity.x / horizSpeed) * maxAirSpeed;
                     this.velocity.z = (this.velocity.z / horizSpeed) * maxAirSpeed;
@@ -407,16 +448,16 @@ export class MovementController {
         // 6. Camera Tilt & FOV Effects
         // Strafe roll
         let targetRoll = 0;
-        if (this.keys.left) targetRoll += 0.025;
-        if (this.keys.right) targetRoll -= 0.025;
-        if (this.isSliding) targetRoll += 0.04; // COD slide tilt
+        if (this.keys.left) targetRoll += 0.008;
+        if (this.keys.right) targetRoll -= 0.008;
+        if (this.isSliding) targetRoll += 0.018;
         this.cameraRoll = THREE.MathUtils.damp(this.cameraRoll, targetRoll, 10.0, delta);
 
         // Head bobbing
         const speed = Math.hypot(this.velocity.x, this.velocity.z);
-        const bobTarget = this.isCrouching ? 0.018 : this.isWalking ? 0.025 : this.isSprinting ? 0.08 : 0.04;
-        if (this.isGrounded && speed > 2.0 && !this.isSliding) {
-            const bobFreq = this.isSprinting ? 18.0 : this.isWalking || this.isCrouching ? 7.5 : 12.0;
+        const bobTarget = this.isCrouchRunning ? .012 : this.isCrouching ? 0.006 : this.isWalking ? 0.008 : this.isSprinting ? 0.03 : 0.015;
+        if (this.isGrounded && speed > 0.4 && !this.isSliding) {
+            const bobFreq = this.isSprinting ? 14 : this.isCrouchRunning ? 10 : this.isWalking || this.isCrouching ? 7 : 10;
             this.bobTime += delta * bobFreq;
             this.bobAmount = THREE.MathUtils.damp(this.bobAmount, bobTarget, 8.0, delta);
         } else {
@@ -425,7 +466,7 @@ export class MovementController {
 
         // Footsteps follow the stride: sprint stomps, running is normal, slow walking is barely audible,
         // and crouching is silent.
-        if (this.isGrounded && !this.isSliding && speed > 0.6) {
+        if (!this.footstepsFromAnimation && this.isGrounded && !this.isSliding && speed > 0.6) {
             this.stepDistance += speed * delta;
             const strideLength = this.isSprinting ? 2.4 : this.isCrouching ? 1.5 : this.isWalking ? 1.35 : 1.9;
             if (this.stepDistance >= strideLength) {
@@ -438,35 +479,30 @@ export class MovementController {
             this.stepDistance = 0;
         }
 
-        const bobY = Math.sin(this.bobTime) * this.bobAmount;
-        const bobX = Math.cos(this.bobTime * 0.5) * this.bobAmount * 0.5;
+        const steady = (this.isAiming || Math.abs(this.lean) > 0.1) ? 0.25 : 1;
+        const bobY = Math.sin(this.bobTime) * this.bobAmount * steady;
+        const bobX = Math.cos(this.bobTime * 0.5) * this.bobAmount * 0.35 * steady;
 
         // Peek / lean: slide the eye sideways and roll the head, stopping at cover.
-        this.leanTarget = (this.keys.leanRight ? 1 : 0) - (this.keys.leanLeft ? 1 : 0);
-        this.lean = THREE.MathUtils.damp(this.lean, this.leanTarget, 12.0, delta);
+        this.leanTarget = this.isGrounded && !this.isSliding
+            ? (this.keys.leanRight ? 1 : 0) - (this.keys.leanLeft ? 1 : 0) : 0;
+        this.lean = THREE.MathUtils.damp(this.lean, this.leanTarget, 9, delta);
         const leanRight = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
-        // Leaning drops the shoulder a little, so the eye arcs instead of sliding flat.
-        const leanDip = -Math.abs(this.lean) * this.leanMaxDip;
         const leanWanted = this.lean * this.leanMaxOffset;
-        this.leanOffset = this.resolveLean(leanWanted, leanRight, bobX, bobY + leanDip, colliders);
-
-        // Apply to Camera
-        this.camera.position.set(
-            this.position.x + bobX,
-            this.position.y + bobY + leanDip,
-            this.position.z
-        ).addScaledVector(leanRight, this.leanOffset);
-
-        // Camera Rotation (Euler order YXZ)
+        const requestedDip = -Math.abs(this.lean) * this.leanMaxDip;
+        this.leanOffset = this.resolveLean(leanWanted, leanRight, bobX, bobY + requestedDip, colliders);
+        this.effectiveLean = this.leanOffset / this.leanMaxOffset;
+        const leanDip = -Math.abs(this.effectiveLean) * this.leanMaxDip;
+        this.camera.position.set(this.position.x + bobX, this.position.y + bobY + leanDip, this.position.z)
+            .addScaledVector(leanRight, this.leanOffset);
         this.camera.rotation.order = 'YXZ';
         this.camera.rotation.y = this.yaw;
         this.camera.rotation.x = this.pitch;
-        this.camera.rotation.z = this.cameraRoll - this.lean * this.leanMaxRoll;
+        this.camera.rotation.z = this.cameraRoll - this.effectiveLean * this.leanMaxRoll;
 
         // Dynamic FOV for speed sensation
         let desiredFov = this.baseFov;
-        if (this.isSliding) desiredFov += 10;
-        else if (this.isSprinting) desiredFov += 5;
+        if (this.isSprinting) desiredFov += 2;
         this.currentFov = THREE.MathUtils.damp(this.currentFov, desiredFov, 8.0, delta);
 
         // Decay mouse delta for weapon sway
@@ -474,24 +510,34 @@ export class MovementController {
         this.mouseDelta.y *= 0.82;
     }
 
-    // Step the eye sideways and stop just before entering cover.
+    // Sweep a head volume analytically: no stepped offsets and no gaps through thin cover.
     resolveLean(distance, direction, bobX = 0, bobY = 0, colliders = []) {
-        if (!distance) return 0;
-        if (!colliders.length) return distance;
-        const steps = 5;
-        const eye = new THREE.Vector3(this.position.x + bobX, this.position.y + bobY, this.position.z);
-        for (let i = 1; i <= steps; i++) {
-            const probe = eye.clone().addScaledVector(direction, distance * i / steps);
-            const blocked = colliders.some(box =>
-                probe.x > box.min.x - 0.18 && probe.x < box.max.x + 0.18 &&
-                probe.z > box.min.z - 0.18 && probe.z < box.max.z + 0.18 &&
-                probe.y > box.min.y && probe.y < box.max.y + 0.18);
-            if (blocked) return distance * (i - 1) / steps;
+        if (!distance || !colliders.length) return distance;
+        const origin = new THREE.Vector3(this.position.x + bobX, this.position.y + bobY, this.position.z);
+        const ray = new THREE.Ray(origin, direction.clone().multiplyScalar(Math.sign(distance)));
+        const expanded = new THREE.Box3();
+        const point = new THREE.Vector3();
+        let allowed = Math.abs(distance);
+        for (const box of colliders) {
+            expanded.copy(box).expandByScalar(0.12);
+            if (expanded.containsPoint(origin)) return 0;
+            if (ray.intersectBox(expanded, point)) allowed = Math.min(allowed, Math.max(0, origin.distanceTo(point) - 0.015));
         }
-        return distance;
+        return Math.sign(distance) * allowed;
     }
 
     resolveBoxCollision(box, previousFeet = this.position.y - this.currentHeight) {
+        if(box.doorGroup){
+            // Resolve against the leaf in its own coordinates. Its world AABB
+            // encloses empty space when rotated and must not become an invisible wall.
+            const group=box.doorGroup,world=this.position.clone(),velocity=this.velocity.clone();
+            group.updateWorldMatrix(true,false);this.position.copy(group.worldToLocal(world.clone()));
+            this.velocity.applyAxisAngle(new THREE.Vector3(0,1,0),-group.rotation.y);
+            const grounded=this.resolveBoxCollision(box.doorBounds,previousFeet-group.position.y);
+            this.position.copy(group.localToWorld(this.position.clone()));this.velocity.applyAxisAngle(new THREE.Vector3(0,1,0),group.rotation.y);
+            if(this.position.distanceToSquared(world)<1e-12)this.velocity.copy(velocity);
+            return grounded;
+        }
         // Player cylinder/AABB radius = 0.45
         const r = 0.45;
         const p = this.position;
@@ -502,8 +548,12 @@ export class MovementController {
             const local = p.clone().sub(ramp.position).applyAxisAngle(new THREE.Vector3(0, 1, 0), -ramp.rotation);
             if (Math.abs(local.x) > ramp.width / 2 || Math.abs(local.z) > ramp.length / 2) return false;
             const surface = ramp.position.y + ramp.height * (0.5 - local.z / ramp.length);
+            // Stacked stair flights are slabs: walking underneath a higher flight
+            // must not collide with its entire bounding volume.
+            if(ramp.thickness && p.y < surface-ramp.thickness-.001)return false;
+            if(ramp.thickness && this.velocity.y>0 && previousFeet+h<=surface-ramp.thickness && p.y>=surface-ramp.thickness){p.y=surface-ramp.thickness;this.velocity.y=0;return false;}
             if (this.velocity.y <= 0 && p.y - h <= surface &&
-                (previousFeet >= surface - 0.001 || (this.isGrounded && surface - (p.y - h) <= 0.55))) {
+                (previousFeet >= surface - 0.001 || ((this.isGrounded || Math.abs(this.velocity.y)<1.2) && p.y-h >= ramp.position.y-.08 && surface-(p.y-h)<=.35))) {
                 p.y = surface + h;
                 this.velocity.y = 0;
                 return true;

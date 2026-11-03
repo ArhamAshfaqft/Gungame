@@ -1,0 +1,6 @@
+Temporary audio extracted from the user-provided CSMetal Unity build at E:\Builds.
+Source ownership and licensing are unverified; no CC0/open-source claim is made.
+Replace before distribution with cleared original audio.
+See manifest.json for original asset names and path IDs.
+Processing: mono 22.05 kHz PCM, silence trimming, peak normalization, short tail fades.
+The pin and throw cues are temporary repurposed mechanical/swipe sounds.

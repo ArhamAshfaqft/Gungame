@@ -132,6 +132,7 @@ export class Arena {
             roughness: 0.7,
             metalness: 0.2
         });
+        crateMat.userData.surface='wood';
 
         // 1. Central 2-Story Sniper Tower
         this.createBoxCollider(new THREE.Vector3(0, 3.5, 0), new THREE.Vector3(14, 7, 14), platformMat);
@@ -197,11 +198,7 @@ export class Arena {
             this.createBoxCollider(new THREE.Vector3(x, y, z), new THREE.Vector3(1.4, 1.4, 1.4), crateMat);
         }
 
-        // 6. Kinetic Jump Pads (Launches players into the sky for 360 trickshots)
-        this.createJumpPad(-24, 0.1, -24, 22.0);
-        this.createJumpPad(24, 0.1, 24, 22.0);
-        this.createJumpPad(-34, 0.1, 14, 24.0);
-        this.createJumpPad(34, 0.1, -14, 24.0);
+        // Tactical range: traversal stays grounded instead of using arena launch pads.
         this.buildDetails();
     }
 
@@ -227,6 +224,7 @@ export class Arena {
 
         // Calculate world axis-aligned bounding box (AABB)
         const box = new THREE.Box3().setFromObject(mesh);
+        mesh.userData.collider=box;
         this.colliders.push(box);
         return mesh;
     }

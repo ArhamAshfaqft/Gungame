@@ -709,3 +709,41 @@ body, html {
 .hidden {
     display: none !important;
 }
+
+#movement-mode {
+    font-size: 11px;
+    letter-spacing: 1px;
+    min-height: 16px;
+    margin: 4px 0 8px;
+    color: #c6d3d5;
+}
+
+#loadout-panel { position: fixed; z-index: 12; pointer-events: none; bottom: 28px; left: 50%; transform: translateX(-50%); width: min(490px, 42vw); font-size: 12px; letter-spacing: 1px; text-align: center; }
+.weapon-slots, .utility-slots { display: flex; gap: 6px; justify-content: center; margin-top: 6px; }
+.weapon-slots span, .utility-slots span { flex: 1; padding: 7px 5px; background: rgba(12,17,26,.9); border: 1px solid #34414b; border-radius: 3px; color: #9caab4; }
+#loadout-panel .selected { border-color: #ffb341; color: #ffcc82; background: rgba(52,39,20,.95); }
+#loadout-panel .empty { opacity: .45; }
+.utility-slots b { margin-left: 6px; color: white; }
+.loadout-hint { margin-top: 7px; color: #c0cbd2; font-size: 10px; }
+#health-panel { position: fixed; top: 26px; left: 32px; background: rgba(12,17,26,.8); padding: 8px 14px; border-left: 3px solid #a1c2b3; font-size: 12px; letter-spacing: 2px; }
+#health-value { color: white; font-size: 24px; margin-left: 8px; }
+#flash-overlay, #smoke-overlay { position: fixed; inset: 0; pointer-events: none; opacity: 0; }
+#smoke-overlay { z-index: 25; background: #929b9f; }
+#flash-overlay { z-index: 50; background: #fffdf3; }
+#combat-feedback { position: fixed; z-index: 60; pointer-events: none; top: 16%; left: 50%; transform: translateX(-50%); font-size: 16px; letter-spacing: 2px; font-weight: 700; color: #fff5d8; text-shadow: 0 2px 6px #000; }
+.menu-box { max-height: 94vh; overflow-y: auto; }
+.studio-link { display: block; margin-top: 14px; color: #e9b85a; font-size: 12px; letter-spacing: 1.5px; text-align: center; text-decoration: none; }
+.studio-link:hover { color: #fff; }
+#camera-toggle{position:fixed;right:24px;top:24px;z-index:12;padding:10px 14px;background:rgba(18,26,33,.88);border:1px solid #637381;border-radius:5px;color:#e9b85a;font:600 12px Arial,sans-serif;cursor:pointer}#camera-toggle:disabled{opacity:.5}
+
+.map-select { display:flex; gap:10px; margin:20px 0; text-align:left; }
+.map-select a { flex:1; text-decoration:none; padding:12px 14px; border:1px solid #4e565b; background:#121c24; color:#d8e4e9; }
+.map-select a.active { border-color:#edba58; background:#302b20; }
+.map-select b { display:block; font-family:'Chakra Petch',sans-serif; font-size:15px; letter-spacing:1px; }
+.map-select span { display:block; color:#a7b4bd; font-size:12px; margin-top:4px; }
+#map-location { position:absolute; top:26px; left:50%; transform:translateX(-50%); padding:8px 18px; background:#121b22cb; color:#e3dbca; font:600 14px 'Chakra Petch',sans-serif; letter-spacing:1px; pointer-events:none; }
+@media(max-width:600px){.map-select{flex-direction:column;}#map-location{top:80px;}}
+
+.map-brief {color:#afc1c6;font-size:13px;line-height:1.6;margin:-5px 0 20px;text-align:left;}
+#reset-villa { display:block; width:100%; margin-top:10px; padding:11px; border:1px solid #67737a; border-radius:4px; background:#18232b; color:#d6e0e4; font:600 12px 'Chakra Petch',sans-serif; letter-spacing:1px; cursor:pointer; }
+#reset-villa:hover { border-color:#edba58; color:#edba58; }

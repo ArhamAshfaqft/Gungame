@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { instantiateSwatRig, LEFT_GRIP, RIGHT_GRIP } from '../src/models/SwatRig.js';
+import { emptyPose } from '../src/studio/PoseLibrary.js';
+import { sampleViewAction } from '../src/models/ViewActions.js';
 
 // Load the actual production skeleton in Node; textures are irrelevant to pose validation.
 const source = readFileSync(new URL('../public/assets/operators/swat.glb', import.meta.url));
@@ -28,6 +30,73 @@ const makeViewRig = () => {
     reference.add(rig.object);
     return { rig, reference };
 };
+
+test('adapted imported actions preserve SWAT segment lengths and saved grip inputs', () => {
+    const pack = JSON.parse(readFileSync(new URL('../public/assets/animations/view-actions.json', import.meta.url)));
+    const { rig, reference } = makeViewRig();
+    const custom = emptyPose(); custom.Right.handRotation[1] = 0.1;
+    const before = JSON.stringify(custom);
+    for (const clip of pack.clips) for (const progress of [0.15, 0.5, 0.85]) {
+        rig.reset();
+        rig.poseHands(reference, { pose: clip.id.startsWith('pistol') ? 'pistol' : clip.id.startsWith('grenade') ? 'grenade' : 'rifle',
+            custom, motion: sampleViewAction(pack, clip.id, progress) });
+        for (const side of ['Left', 'Right']) for (const part of ['ForeArm', 'Hand']) {
+            const bone = rig.bones[side + part];
+            assert.ok(Math.abs(bone.position.length() - rig.rest.get(bone).position.length()) < 0.00001);
+            assert.ok(bone.matrixWorld.elements.every(Number.isFinite));
+        }
+    }
+    assert.equal(JSON.stringify(custom), before);
+});
+
+test('studio offsets move the actual grip and fingers without stretching bones', () => {
+    const { rig, reference } = makeViewRig();
+    rig.reset(); rig.poseHands(reference);
+    const finger = rig.bones.LeftHandIndex2.quaternion.clone();
+    const lengths = Object.fromEntries(['LeftForeArm', 'LeftHand', 'RightForeArm', 'RightHand'].map(name => [name, rig.bones[name].position.length()]));
+    const custom = emptyPose(); custom.Left.position[0] = 0.025; custom.Left.fingers.Index[1] = 0.4;
+    rig.reset(); rig.poseHands(reference, { custom });
+    const target = LEFT_GRIP.clone().add(new THREE.Vector3(0.025, 0, 0));
+    assert.ok(rig.bones.LeftHand.getWorldPosition(new THREE.Vector3()).distanceTo(target) < 0.005);
+    assert.ok(Math.abs(finger.angleTo(rig.bones.LeftHandIndex2.quaternion) - 0.4) < 0.001);
+    for (const [name, length] of Object.entries(lengths)) assert.ok(Math.abs(rig.bones[name].position.length() - length) < 0.00001);
+});
+
+test('hand-only rotations leave shoulder and forearm transforms unchanged on both arms', () => {
+    for (const side of ['Left', 'Right']) {
+        const { rig, reference } = makeViewRig();
+        rig.reset(); rig.poseHands(reference);
+        const before = {};
+        for (const joint of ['Arm', 'ForeArm', 'Hand']) {
+            const bone = rig.bones[side + joint];
+            before[joint] = { position: bone.getWorldPosition(new THREE.Vector3()), rotation: bone.getWorldQuaternion(new THREE.Quaternion()) };
+        }
+        const custom = emptyPose(); custom[side].handRotation = [0.25, -0.3, 0.4];
+        rig.reset(); rig.poseHands(reference, { custom });
+        for (const joint of ['Arm', 'ForeArm', 'Hand']) {
+            const bone = rig.bones[side + joint];
+            assert.ok(bone.getWorldPosition(new THREE.Vector3()).distanceTo(before[joint].position) < 0.00001);
+            const angle = bone.getWorldQuaternion(new THREE.Quaternion()).angleTo(before[joint].rotation);
+            if (joint === 'Hand') assert.ok(angle > 0.3);
+            else assert.ok(angle < 0.00001, `${side} ${joint} moved with hand-only rotation`);
+        }
+    }
+});
+
+test('elbow rotation leaves shoulder fixed and shoulder rotation carries child joints', () => {
+    const { rig, reference } = makeViewRig();
+    rig.reset(); rig.poseHands(reference);
+    const shoulder = rig.bones.LeftArm.getWorldQuaternion(new THREE.Quaternion());
+    const wrist = rig.bones.LeftHand.getWorldPosition(new THREE.Vector3());
+    const custom = emptyPose(); custom.Left.elbowRotation = [0.35, 0.1, 0];
+    rig.reset(); rig.poseHands(reference, { custom });
+    assert.ok(rig.bones.LeftArm.getWorldQuaternion(new THREE.Quaternion()).angleTo(shoulder) < 0.00001);
+    assert.ok(rig.bones.LeftHand.getWorldPosition(new THREE.Vector3()).distanceTo(wrist) > 0.02);
+    custom.Left.elbowRotation = [0, 0, 0]; custom.Left.shoulderRotation = [0.25, 0, 0];
+    rig.reset(); rig.poseHands(reference, { custom });
+    assert.ok(rig.bones.LeftArm.getWorldQuaternion(new THREE.Quaternion()).angleTo(shoulder) > 0.2);
+    for (const joint of ['ForeArm', 'Hand']) assert.ok(Math.abs(rig.bones['Left' + joint].position.length() - rig.rest.get(rig.bones['Left' + joint]).position.length()) < 0.00001);
+});
 
 test('first-person arm segments preserve source lengths', () => {
     const { rig } = makeViewRig();
@@ -103,7 +172,10 @@ test('actual SWAT wrist skin avoids near-180-degree folds while holding, reloadi
             rest[name] = rig.bones[name].getWorldQuaternion(new THREE.Quaternion());
         }
     }
-    for (const action of [{ reload: 0, bolt: 0 }, { reload: 0.5, bolt: 0 }, { reload: 0, bolt: 0.5 }]) {
+    for (const action of [{ reload: 0, bolt: 0 }, { reload: 0.5, bolt: 0 }, { reload: 0, bolt: 0.5 },
+        { pose: 'pistol' }, { pose: 'pistol', reload: 0.5 }, { pose: 'throw', throwProgress: 0.2 },
+        { pose: 'throw', throwProgress: 0.6 }, { pose: 'grenade', pinProgress: 0 },
+        { pose: 'grenade', pinProgress: 0.5 }, { pose: 'grenade', pinProgress: 1 }]) {
         rig.reset();
         rig.poseHands(reference, action);
         for (const side of ['Left', 'Right']) {
@@ -114,7 +186,7 @@ test('actual SWAT wrist skin avoids near-180-degree folds while holding, reloadi
             const angle = THREE.MathUtils.radToDeg(deformation('ForeArm').angleTo(deformation('Hand')));
             assert.ok(angle < 95, `${side} wrist folded ${angle.toFixed(1)} degrees during ${JSON.stringify(action)}`);
         }
-        if (!action.reload && !action.bolt) {
+        if (!action.pose && !action.reload && !action.bolt) {
             for (const [side, grip] of [['Left', LEFT_GRIP], ['Right', RIGHT_GRIP]]) {
                 assert.ok(rig.bones[side + 'Hand'].getWorldPosition(new THREE.Vector3()).distanceTo(grip) < 0.005,
                     `${side} wrist must remain on its rifle grip`);

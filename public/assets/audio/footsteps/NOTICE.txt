@@ -1,0 +1,8 @@
+Recorded footsteps: Kenney, Impact Sounds (CC0 1.0).
+Original source: https://kenney.nl/assets/impact-sounds
+Downloaded concrete variants 000–004 from the InstrictLogic CC0 mirror:
+https://instrictlogic.com/AssetLibrary/sounds/banks/material-impacts-footsteps-kenney-2362a2f7/
+Files concrete-0.ogg through concrete-4.ogg retain the original OGG recordings.
+License: https://creativecommons.org/publicdomain/zero/1.0/
+Runtime trims leading silence and varies gain/pitch slightly. No per-step network requests.
+Browser playback uses mono 44.1 kHz PCM WAV conversions of those originals for decoder compatibility.

@@ -5,9 +5,18 @@ export class HUD {
         this.hitmarker = document.getElementById('hitmarker');
         this.hitmarkerX = document.getElementById('hitmarker-x');
         this.speedometer = document.getElementById('speed-value');
+        this.movementMode = document.getElementById('movement-mode');
         this.speedFill = document.getElementById('speed-fill');
         this.ammoValue = document.getElementById('ammo-val');
         this.ammoReserve = document.getElementById('ammo-res');
+        this.weaponName = document.getElementById('weapon-name');
+        this.weaponMode = document.getElementById('weapon-mode');
+        this.flashOverlay = document.getElementById('flash-overlay');
+        this.smokeOverlay = document.getElementById('smoke-overlay');
+        this.feedback = document.getElementById('combat-feedback');
+        this.health = document.getElementById('health-value');
+        this.primarySlot = document.getElementById('slot-primary');
+        this.pistolSlot = document.getElementById('slot-pistol');
         this.killfeed = document.getElementById('killfeed');
         this.banner = document.getElementById('streak-banner');
         this.interactPrompt = document.getElementById('interact-prompt');
@@ -111,12 +120,13 @@ export class HUD {
         }
     }
 
-    update(movement, weapon, room = null) {
+    update(movement, weapon, room = null, equipment = null) {
         window.__isPlayerSliding = movement.isSliding;
 
         // 1. Crosshair bloom
         const ads = weapon.adsProgress;
-        if (ads > 0.3) {
+        const scopedRifle = !weapon.thirdPerson && !weapon.grenadeEquipped && weapon.activeSlot === 'primary';
+        if (ads > 0.3 && scopedRifle) {
             // Hide crosshair when scoped
             this.crosshair.style.opacity = Math.max(0, (1.0 - ads * 2.5)).toString();
         } else {
@@ -133,7 +143,7 @@ export class HUD {
         }
 
         // 2. Scope Overlay Opacity
-        if (ads > 0.4) {
+        if (ads > 0.4 && scopedRifle) {
             const scopeAlpha = (ads - 0.4) / 0.6;
             this.scopeOverlay.style.opacity = scopeAlpha.toString();
             this.scopeOverlay.style.pointerEvents = 'none';
@@ -147,15 +157,27 @@ export class HUD {
         this.speedometer.textContent = `${speed}`;
 
         // Color coding: Gold when in super fast slide/jump
-        const isHyperspeed = speed > 60 || movement.isSliding;
+        const isHyperspeed = movement.isSprinting;
         if (isHyperspeed) {
             this.speedometer.classList.add('boost');
         } else {
             this.speedometer.classList.remove('boost');
         }
 
-        const fillPercent = Math.min(100, (speed / 90) * 100);
+        const fillPercent = Math.min(100, (movement.getSpeed() / movement.sprintSpeed) * 100);
         this.speedFill.style.width = `${fillPercent}%`;
+
+        if (this.movementMode) {
+            this.movementMode.textContent = movement.isSliding ? 'LOW ENTRY'
+                : movement.isSprinting ? 'SPRINT / WEAPON LOWERED'
+                : movement.sprintRecovery > 0 ? 'RAISING WEAPON'
+                : weapon.isReloading ? 'RELOADING'
+                : movement.keys.leanLeft || movement.keys.leanRight ?
+                    (Math.abs(movement.leanOffset) < 0.02 ? 'COVER LIMIT' : movement.leanOffset < 0 ? 'PEEK LEFT' : 'PEEK RIGHT')
+                : movement.isCrouchRunning ? 'CROUCH RUN' : movement.isCrouching ? 'CROUCH WALK'
+                : movement.isWalking ? 'QUIET WALK'
+                : weapon.isAiming ? 'AIMED MOVEMENT' : 'READY';
+        }
 
         this.tagSlide.classList.toggle('active', movement.isSliding);
         this.tagSprint.classList.toggle('active', movement.isSprinting);
@@ -165,6 +187,36 @@ export class HUD {
         // 4. Ammo Counter
         this.ammoValue.textContent = weapon.magAmmo;
         this.ammoReserve.textContent = `/ ${weapon.reserveAmmo}`;
+        if (this.weaponName) this.weaponName.textContent = weapon.profile.name;
+        if (this.weaponMode) this.weaponMode.textContent = weapon.isReloading ? 'RELOADING'
+            : weapon.utilityTimer > 0 ? 'THROWING' : weapon.switchTimer > 0 ? 'DRAWING' : weapon.profile.mode;
+        this.primarySlot?.classList.toggle('selected', !weapon.grenadeEquipped && weapon.activeSlot === 'primary');
+        this.pistolSlot?.classList.toggle('selected', !weapon.grenadeEquipped && weapon.activeSlot === 'pistol');
+        if (equipment) {
+            for (const type of ['frag', 'flash', 'smoke']) {
+                const element = document.getElementById(`utility-${type}`);
+                element?.classList.toggle('selected', weapon.grenadeEquipped && equipment.selected === type);
+                element?.classList.toggle('empty', equipment.counts[type] <= 0);
+                const count = document.getElementById(`count-${type}`);
+                if (count) count.textContent = equipment.counts[type];
+            }
+            if (this.health) this.health.textContent = equipment.playerHealth;
+            if (equipment.held) {
+                this.weaponName.textContent = `${equipment.held.type.toUpperCase()} // GRENADE`;
+                this.weaponMode.textContent = equipment.pending ? 'THROWING' : equipment.held.armed ? 'LIVE FUSE / THROW NOW' : 'PIN SAFE / RMB TO ARM';
+                this.ammoValue.textContent = equipment.fuseRemaining === null ? equipment.counts[equipment.held.type] : equipment.fuseRemaining.toFixed(1);
+                this.ammoReserve.textContent = equipment.fuseRemaining === null ? 'READY' : 'SEC';
+            }
+            const hint = document.getElementById('loadout-hint');
+            if (hint) hint.textContent = !equipment.held ? '3 / 4 / 5 · EQUIP GRENADE'
+                : !equipment.held.armed ? 'RMB · PULL PIN | 1 / 2 · STOW'
+                : movement.keys.walk ? 'LMB · LOW TOSS | RELEASE ALT · HIGH THROW'
+                : 'LMB · HIGH THROW | ALT + LMB · LOW TOSS';
+            if (this.flashOverlay) this.flashOverlay.style.opacity = Math.min(0.98, equipment.flashOpacity).toString();
+            if (this.smokeOverlay) this.smokeOverlay.style.opacity = equipment.smokeOpacity.toString();
+            if (this.feedback) this.feedback.textContent = equipment.playerHealth <= 0 ? 'BLAST DOWN / RECOVERING'
+                : equipment.statusTime > 0 ? equipment.status : '';
+        }
 
         // 6. Door interaction prompt
         if (this.interactPrompt && room) {

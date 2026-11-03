@@ -1,0 +1,20 @@
+// World units are meters. Keep movement and handling values together for later network simulation.
+export const TACTICAL = Object.freeze({
+    runSpeed: 3.2,
+    sprintSpeed: 7.2,
+    slowWalkSpeed: 1.35,
+    crouchSpeed: 1.6,
+    crouchRunSpeed: 2.8,
+    aimedSpeed: 1.8,
+    leanSpeed: 1.5,
+    slideInitialSpeed: 5.2,
+    slideMinSpeed: 1.1,
+    slideDecel: 9,
+    slideMaxDuration: 0.48,
+    slideCooldown: 1.4,
+    jumpForce: 5.2,
+    gravity: 28,
+    sprintReadyTime: 0.22,
+    leanMaxOffset: 0.32,
+    leanMaxRoll: 0.09,
+});

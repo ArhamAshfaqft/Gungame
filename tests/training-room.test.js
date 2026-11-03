@@ -13,13 +13,13 @@ const makeRoom = () => {
 
 const fakeHit = (instanceId, point = new THREE.Vector3(0, 1.2, 40)) => ({ instanceId, point });
 
-test('training room builds solid walls, a hinged door and two glass panes', () => {
+test('training room builds solid walls, a fractured door and four glass panes', () => {
     const { scene, colliders, room } = makeRoom();
     assert.ok(scene.children.length > 10);
     assert.ok(colliders.length >= 10);
     assert.ok(colliders.includes(room.doorBox), 'the closed door blocks movement');
     assert.equal(room.glassPanes.length, 4);
-    assert.equal(room.doorMesh.count, 8 * 16);
+    assert.equal(room.doorPieces.length, 8 * 16);
     assert.ok(room.doorMesh.userData.breakable);
 });
 
@@ -58,30 +58,34 @@ test('the door is opened and closed with the interaction key', () => {
     assert.equal(colliders.includes(room.doorBox), true, 'the collider returns once it is shut');
 });
 
-test('shots remove the boards they hit and eventually break the door', () => {
-    const { colliders, room } = makeRoom();
-    const hit = fakeHit(20);
+test('shots leave a real hole, neighboring wood remains solid, and the door rebuilds', () => {
+    const { colliders, scene, room } = makeRoom();
+    scene.updateMatrixWorld(true);
+    const ray = new THREE.Raycaster(new THREE.Vector3(0, 1.2, 38), new THREE.Vector3(0, 0, 1));
+    const hit = ray.intersectObject(room.doorMesh)[0];
+    assert.ok(hit);
     room.doorMesh.userData.breakable.takeBulletHit(hit, 125, new THREE.Vector3(0, 0, 1));
-    assert.ok(room.brokenBoards.has(20), 'the board under the crosshair is gone');
+    assert.ok(room.brokenBoards.has(hit.instanceId), 'the piece under the crosshair is gone');
     assert.ok(room.brokenBoards.size > 1, 'neighbouring boards splinter away');
-
-    const matrix = new THREE.Matrix4();
-    room.doorMesh.getMatrixAt(20, matrix);
-    assert.ok(matrix.elements[13] < -100, 'a broken board is moved out of the way');
+    assert.equal(ray.intersectObject(room.doorMesh).length, 0, 'a later round passes through the actual hole');
+    const edge = new THREE.Raycaster(new THREE.Vector3(-0.43, 0.3, 38), new THREE.Vector3(0, 0, 1));
+    assert.ok(edge.intersectObject(room.doorMesh).length > 0, 'wood away from the impact still stops rounds');
 
     for (let i = 0; i < 4; i++) {
-        room.doorMesh.userData.breakable.takeBulletHit(fakeHit(30 + i), 125, new THREE.Vector3(0, 0, 1));
+        const piece = room.doorPieces.find(piece => !room.brokenBoards.has(piece.id));
+        if (!piece) break;
+        room.doorMesh.userData.breakable.takeBulletHit(fakeHit(piece.id), 125, new THREE.Vector3(0, 0, 1));
     }
     assert.equal(room.door.destroyed, true);
-    assert.equal(room.brokenBoards.size, room.doorMesh.count);
+    assert.equal(room.brokenBoards.size, room.doorPieces.length);
     assert.equal(colliders.includes(room.doorBox), false, 'a destroyed door no longer blocks');
 
     room.update(36, new THREE.Vector3(0, 1.65, 38));
     assert.equal(room.door.destroyed, false, 'the range rebuilds the door');
     assert.equal(room.brokenBoards.size, 0);
     assert.ok(colliders.includes(room.doorBox));
-    room.doorMesh.getMatrixAt(20, matrix);
-    assert.ok(Math.abs(matrix.elements[13] - room.boardMatrices[20].elements[13]) < 0.001);
+    scene.updateMatrixWorld(true);
+    assert.ok(ray.intersectObject(room.doorMesh).length > 0, 'rebuilt wood blocks the old bullet channel');
 });
 
 test('glass shatters on impact and is replaced later', () => {
@@ -92,9 +96,37 @@ test('glass shatters on impact and is replaced later', () => {
     assert.equal(pane.visible, false);
     assert.equal(pane.userData.isShootable, false);
     assert.ok(room.debris.length > 0, 'shards are falling');
+    const positions = room.glassDebris.pieces.map(piece => piece.position);
+    const extent = new THREE.Box3().setFromPoints(positions).getSize(new THREE.Vector3());
+    assert.ok(extent.z > 0.9, 'shards come from the width of the pane, not just the bullet point');
+    assert.ok(extent.y > 0.4);
+    assert.equal(room.colliders.includes(pane.userData.collider), false, 'broken glass stops blocking movement');
 
     room.update(36, new THREE.Vector3(0, 1.65, 38));
     assert.equal(pane.userData.shattered, false);
     assert.equal(pane.visible, true);
     assert.equal(pane.userData.isShootable, true);
+    assert.ok(room.colliders.includes(pane.userData.collider));
+});
+
+test('debris stays within a fixed render and memory budget during repeated destruction', () => {
+    const { scene, room } = makeRoom();
+    const originalObjects = scene.children.length;
+    for (let i = 0; i < 700; i++) room.spawnDebris('wood', new THREE.Vector3(0, 1, 40), new THREE.Vector3(0, 0, 1));
+    assert.equal(room.woodDebris.pieces.length, 192);
+    assert.equal(scene.children.length, originalObjects, 'fragments reuse one instanced draw instead of adding meshes');
+    room.update(10);
+    assert.equal(room.debris.length, 0);
+    assert.equal(room.woodDebris.mesh.count, 0);
+});
+
+test('opening, damaging and rebuilding the door invalidates its cached shadow', () => {
+    const { room } = makeRoom();
+    room.shadowsDirty = false;
+    room.interact(new THREE.Vector3(0, 1.65, 38));
+    room.update(0.1);
+    assert.ok(room.shadowsDirty);
+    room.shadowsDirty = false;
+    room.breakBoard(20);
+    assert.ok(room.shadowsDirty);
 });

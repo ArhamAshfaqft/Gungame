@@ -1,0 +1,12 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {FootstepContacts} from '../src/player/FootstepContacts.js';import {readFileSync} from 'node:fs';
+const range={Left:{min:.1,max:.3},Right:{min:.1,max:.3}};
+function gait({speed=3,grounded=true,sliding=false}={}){let hits=[],time=0;const f=new FootstepContacts(side=>hits.push({side,time}));for(let i=0;i<240;i++){time=i/120;f.update(1/120,{speed,grounded,sliding,range,heights:{Left:.1+.2*(1-Math.cos(time*Math.PI*4))/2,Right:.1+.2*(1+Math.cos(time*Math.PI*4))/2}})}return hits;}
+test('footsteps follow alternating descending foot contacts without repeated stance sounds',()=>{const hits=gait();assert.ok(hits.length>=6&&hits.length<=8);for(let i=1;i<hits.length;i++){assert.notEqual(hits[i].side,hits[i-1].side);assert.ok(hits[i].time-hits[i-1].time>.16)}for(const h of hits){const phase=(h.time*2+(h.side==='Right'?.5:0))%1;assert.ok(phase>.85||phase<.05,'contact belongs near the low point of that foot')}});
+test('idle, airborne and sliding never emit footfalls',()=>{assert.equal(gait({speed:0}).length,0);assert.equal(gait({grounded:false}).length,0);assert.equal(gait({sliding:true}).length,0)});
+test('all contact calibrations are finite and include crouch, strafe, diagonal and pistol gaits',()=>{const p=JSON.parse(readFileSync(new URL('../public/assets/animations/foot-contacts.json',import.meta.url)));for(const id of ['run','strafeLeft','rifleCrouchWalk','rifleCrouchWalkForwardLeft','rifleRunForwardRight','pistolWalk','pistolStrafeRight'])assert.ok(p.clips[id],id);for(const feet of Object.values(p.clips))for(const f of Object.values(feet)){assert.ok(Number.isFinite(f.min)&&Number.isFinite(f.max));assert.ok(f.max>f.min)}});
+test('recorded footstep files are valid small OGG assets',()=>{for(let i=0;i<5;i++){const file=readFileSync(new URL(`../public/assets/audio/footsteps/concrete-${i}.ogg`,import.meta.url));assert.equal(file.subarray(0,4).toString(),'OggS');assert.ok(file.length<20000)}});
+
+test('audio sample bank contains the recorded WAV data for every variation',()=>{
+ const pack=JSON.parse(readFileSync(new URL('../public/assets/audio/footsteps/samples.json',import.meta.url)));assert.equal(pack.samples.length,5);
+ for(let i=0;i<5;i++){const encoded=Buffer.from(pack.samples[i],'base64'),wav=readFileSync(new URL(`../public/assets/audio/footsteps/concrete-${i}.wav`,import.meta.url));assert.deepEqual(encoded,wav);assert.equal(wav.subarray(0,4).toString(),'RIFF');assert.equal(wav.subarray(8,12).toString(),'WAVE')}
+});

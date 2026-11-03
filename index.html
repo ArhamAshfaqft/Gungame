@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>FAST SNIPE // Tactical Quickscope Arena</title>
+    <title>FAST SNIPE // Tactical Breach</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0d14'/%3E%3Cpath d='M16 5v22M5 16h22' stroke='%23ff9d00' stroke-width='3'/%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,6 +13,9 @@
 <body>
     <!-- Game 3D Canvas -->
     <canvas id="game-canvas"></canvas>
+    <div id="smoke-overlay"></div>
+    <div id="flash-overlay"></div>
+    <div id="combat-feedback" role="status"></div>
 
     <!-- Fullscreen Sniper Scope Overlay (Visible when ADS) -->
     <div id="scope-overlay" class="hidden">
@@ -76,6 +79,7 @@
 
     <!-- Esports In-Game HUD -->
     <div id="hud">
+        <div id="health-panel">HP <span id="health-value">100</span></div>
         <!-- Top Right Kill Feed -->
         <div id="killfeed"></div>
 
@@ -95,46 +99,61 @@
                 <span class="speed-unit">KM/H</span>
             </div>
             <div id="speed-value">0</div>
+            <div id="movement-mode">READY</div>
             <div class="speed-bar">
                 <div id="speed-fill"></div>
             </div>
             <div class="movement-tags">
-                <span id="tag-slide" class="tag">SLIDE</span>
+                <span id="tag-slide" class="tag">LOW</span>
                 <span id="tag-sprint" class="tag">SPRINT</span>
-                <span id="tag-walk" class="tag">WALK</span>
+                <span id="tag-walk" class="tag">QUIET</span>
                 <span id="tag-crouch" class="tag">CROUCH</span>
             </div>
         </div>
 
         <!-- Bottom Right: Weapon & Ammo Counter -->
         <div id="ammo-panel">
-            <div class="weapon-name">BARRETT M98B // .338</div>
+            <div class="weapon-name" id="weapon-name">M98B // .338</div>
             <div class="ammo-row">
                 <span id="ammo-val">5</span>
                 <span id="ammo-res">/ 35</span>
             </div>
-            <div class="ammo-mode">BOLT-ACTION PRECISION</div>
+            <div class="ammo-mode" id="weapon-mode">BOLT ACTION</div>
         </div>
+    </div>
+
+    <div id="loadout-panel">
+        <div class="weapon-slots"><span id="slot-primary" class="selected">1 · SNIPER</span><span id="slot-pistol">2 · M9 PISTOL</span></div>
+        <div class="utility-slots">
+            <span id="utility-frag" class="selected">3 · FRAG <b id="count-frag">2</b></span>
+            <span id="utility-flash">4 · FLASH <b id="count-flash">2</b></span>
+            <span id="utility-smoke">5 · SMOKE <b id="count-smoke">2</b></span>
+        </div>
+        <div class="loadout-hint" id="loadout-hint">3 / 4 / 5 · EQUIP GRENADE</div>
     </div>
 
     <!-- Start / Instruction Screen -->
     <div id="start-screen">
         <div class="menu-box">
             <div class="glitch-title">FAST SNIPE</div>
-            <div class="subtitle">FAST-PACED SNIPER ARENA // COD MOVEMENT</div>
+            <div class="subtitle">TACTICAL BREACHING RANGE // MOVE · LISTEN · PEEK</div>
 
             <div class="movement-guide">
+                <div class="guide-item"><span class="key">1 / 2</span><span class="desc">Sniper / M9 pistol</span></div>
+                <div class="guide-item"><span class="key">3 / 4 / 5 · G</span><span class="desc">Equip frag / flash / smoke · G equips last</span></div>
+                <div class="guide-item"><span class="key">RMB · LMB</span><span class="desc">Grenade: pull pin · High throw (6 sec fuse)</span></div>
+                <div class="guide-item"><span class="key">ALT + LMB</span><span class="desc">Grenade: low toss (or RMB again after pin)</span></div>
                 <div class="guide-item">
                     <span class="key">SHIFT</span>
                     <span class="desc">Tactical Sprint</span>
                 </div>
                 <div class="guide-item">
                     <span class="key">C</span>
-                    <span class="desc">Slide (Fast burst while sprinting)</span>
+                    <span class="desc">Low entry from sprint / Crouch</span>
                 </div>
                 <div class="guide-item">
                     <span class="key">SPACE</span>
-                    <span class="desc">Slide-Jump / Bhop (Carries slide momentum!)</span>
+                    <span class="desc">Short jump (controlled movement)</span>
                 </div>
                 <div class="guide-item">
                     <span class="key">Q / E</span>
@@ -154,7 +173,7 @@
                 </div>
                 <div class="guide-item">
                     <span class="key">RIGHT CLICK</span>
-                    <span class="desc">Quickscope ADS (130ms instant zoom)</span>
+                    <span class="desc">Aim (steady, slower movement)</span>
                 </div>
                 <div class="guide-item">
                     <span class="key">LEFT CLICK</span>
@@ -164,6 +183,7 @@
                     <span class="key">R</span>
                     <span class="desc">Tactical Reload</span>
                 </div>
+                <div class="guide-item"><span class="key">V</span><span class="desc">First / Third Person</span></div>
             </div>
 
             <div class="settings-panel">
@@ -186,6 +206,7 @@
             </div>
 
             <button id="btn-play">CLICK TO DROP IN</button>
+            <a href="/studio.html" target="_blank" rel="noopener" class="studio-link">OPEN POSE STUDIO ↗</a>
             <div class="hint">Pointer Lock captures true mouse aim, and Alt / Tab / Ctrl shortcuts stay in-game. Press ESC to release.</div>
         </div>
     </div>

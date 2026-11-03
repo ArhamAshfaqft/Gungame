@@ -2,15 +2,18 @@ import * as THREE from 'three';
 import { createOperator } from '../models/TacticalOperator.js';
 import { createSwatRig } from '../models/SwatRig.js';
 import { loadSniperModel } from '../models/SniperModel.js';
+import { loadPistolModel } from '../models/PistolModel.js';
 import { soundEngine } from '../audio/SoundEngine.js';
+import { SkeletalRagdoll } from '../models/SkeletalRagdoll.js';
 
 const materialsOf = mesh => Array.isArray(mesh.material) ? mesh.material : [mesh.material];
 
 export class BotManager {
-    constructor(scene, colliders = []) {
+    constructor(scene, colliders = [], {spawnPoints=null, persistDeaths=false}={}) {
         this.scene = scene;
         this.bots = [];
         this.colliders = colliders;
+        this.persistDeaths = persistDeaths;
 
         this.spawnPoints = [
             new THREE.Vector3(-24, 3.75, 0),    // Catwalk left
@@ -22,6 +25,8 @@ export class BotManager {
             new THREE.Vector3(-32, 0, 16)      // Jump pad flank
         ];
 
+        if(spawnPoints)this.spawnPoints=spawnPoints.map(p=>p.clone());
+        this.indoor=!!spawnPoints;
         this.botNames = ['Viper', 'Ghost', 'Phantom', 'Apex', 'Ranger', 'Hawkeye', 'Zero'];
 
         this.init();
@@ -32,7 +37,10 @@ export class BotManager {
         for (let i = 0; i < this.spawnPoints.length; i++) {
             try {
                 const rig = await createSwatRig();
-                rig.attachRifle(await loadSniperModel());
+                if (i >= this.spawnPoints.length - 2) {
+                    rig.attachAnimatedModel(await loadPistolModel(), 'pistol');
+                    rig.update(0, { speed: 0 });
+                } else rig.attachRifle(await loadSniperModel());
                 this.spawnBot(this.botNames[i], this.spawnPoints[i], rig);
             } catch (error) {
                 console.error('SWAT character could not load.', error);
@@ -51,6 +59,8 @@ export class BotManager {
         root.position.copy(spawnPos);
         this.scene.add(root);
         const bot = new Bot(name, root, spawnPos, this.scene, this.colliders, rig);
+        bot.persistDeath = this.persistDeaths;
+        if(this.indoor)bot.patrolRadius=1.5;
         this.bots.push(bot);
     }
 
@@ -87,7 +97,7 @@ class Bot {
         this.patrolCenter = this.spawnPos.clone();
         this.targetPos = this.spawnPos.clone();
         this.patrolRadius = spawnPos.y > 0 ? 2.5 : 7.0;
-        this.speed = 2.5 + Math.random() * 1.5;
+        this.speed = 2.4 + Math.random() * 0.6;
         this.moveTimer = 0;
 
         // Animation / Hit flash
@@ -107,30 +117,40 @@ class Bot {
         });
     }
 
-    takeDamage(amount, isHeadshot, hitDirection) {
+    takeDamage(amount, isHeadshot, hitDirection,hitPoint=null,weapon='pistol') {
         if (!this.isAlive) return;
 
         this.hp -= amount;
+        if(this.hp>0)soundEngine.playPain(this.position);
         this.flashTime = 0.15;
+        this.rig?.animator?.trigger('hit');
+        if(this.rig){
+            let bone=isHeadshot?'Neck':'Spine2';
+            if(hitPoint?.isVector3&&!isHeadshot){let distance=Infinity;for(const name of ['Spine2','LeftArm','RightArm','LeftUpLeg','RightUpLeg']){const d=this.rig.bones[name].getWorldPosition(new THREE.Vector3()).distanceToSquared(hitPoint);if(d<distance){bone=name;distance=d;}}}
+            const local=(hitDirection||new THREE.Vector3(0,0,1)).clone().applyQuaternion(this.model.getWorldQuaternion(new THREE.Quaternion()).invert());
+            this.rig.hitKick={bone,amount:Math.min(.22,amount*.002),side:-local.x,pitch:local.z,remaining:.22};
+        }
 
         // Flash mesh white/red
         this.model.traverse((c) => {
             if (c.isMesh && c.material) {
                 for (const material of materialsOf(c)) {
-                    material.emissive.setHex(isHeadshot ? 0xff2222 : 0xffffff);
-                    material.emissiveIntensity = 0.7;
+                    material.emissive.setHex(0x772222);
+                    material.emissiveIntensity = 0.1;
                 }
             }
         });
 
         if (this.hp <= 0) {
-            this.die(isHeadshot, hitDirection);
+            this.die(isHeadshot, hitDirection,hitPoint,weapon);
         }
     }
 
-    die(isHeadshot, hitDirection) {
+    die(isHeadshot, hitDirection,hitPoint,weapon) {
+        soundEngine.playDeath(this.position);
         this.isAlive = false;
-        this.respawnTimer = 2.4;
+        this.respawnTimer = this.persistDeath ? Infinity : 5;
+        if(this.rig)this.ragdoll=new SkeletalRagdoll(this.rig,this.colliders,hitDirection||new THREE.Vector3(),hitPoint?.isVector3?hitPoint:null,weapon==='primary'?1.8:weapon==='frag'?2.4:1);
 
         soundEngine.playKill();
 
@@ -140,12 +160,15 @@ class Bot {
     }
 
     respawn() {
+        this.ragdoll=null;this.rig?.reset();if(this.rig){if(this.rig.animator){this.rig.animator.authoredPose=null;this.rig.animator.presentedPose=null;}this.rig.hitKick=null;}
         this.isAlive = true;
         this.hp = this.maxHp;
         this.deathRotation = 0;
+        if (this.rig?.animator) { this.rig.animator.actionRemaining = 0; this.rig.animator.play(this.rig.animatedKind === 'pistol' ? 'pistolIdle' : 'idle', { fade: 0 }); }
 
         // Reset transform
         this.position.copy(this.spawnPos);
+        this.previousPosition = this.position.clone();
         this.model.rotation.set(0, Math.random() * Math.PI * 2, 0);
 
         this.model.traverse((c) => {
@@ -160,6 +183,11 @@ class Bot {
 
     update(delta, playerPos) {
         this.motionTime += delta;
+        if (this.isAlive && this.flashTimer > 0) {
+            this.flashTimer = Math.max(0, this.flashTimer - delta);
+            this.rig?.update(delta, { speed: 0, isGrounded: true });
+            return;
+        }
         // Hit flash decay
         if (this.flashTime > 0) {
             this.flashTime -= delta;
@@ -176,6 +204,7 @@ class Bot {
         }
 
         if (!this.isAlive) {
+            if(this.ragdoll){this.ragdoll.update(delta);this.respawnTimer-=delta;if(this.respawnTimer<=0)this.respawn();return;}
             // Death Ragdoll Collapse / Fall
             if (this.deathRotation < Math.PI / 2) {
                 this.deathRotation += delta * 6.0;
@@ -231,14 +260,22 @@ class Bot {
             this.model.rotation.y += angle * Math.min(1, delta * 9);
         }
         const moved = this.position.distanceTo(this.previousPosition || this.position);
+        const displacement = this.position.clone().sub(this.previousPosition || this.position);
+        const sin = Math.sin(this.model.rotation.y), cos = Math.cos(this.model.rotation.y);
+        const forward = displacement.x * sin + displacement.z * cos;
+        const lateral = displacement.x * cos - displacement.z * sin;
         const actualSpeed = delta > 0 ? moved / delta : 0;
         this.previousPosition = this.position.clone();
         const lookingAt = playerPos ? Math.atan2(playerPos.y - (this.position.y + 1.5), Math.max(1, this.position.distanceTo(playerPos))) : 0;
         this.poseElapsed += delta;
         const distance = playerPos ? this.position.distanceTo(playerPos) : 0;
-        const poseInterval = distance < 20 ? 1 / 30 : distance < 45 ? 1 / 20 : 1 / 10;
+        // Nearby characters animate on every rendered frame; distant bodies retain
+        // throttling to bound CPU skin/IK work.
+        const poseInterval = distance < 45 ? 0 : 1 / 30;
         if (this.poseElapsed >= poseInterval) {
             this.rig?.update(this.poseElapsed, { speed: actualSpeed, isGrounded: true,
+                lean:this.lean || 0,
+                forward, lateral,
                 isSprinting: this.isSprinting, isSliding: this.isSliding, aimPitch: lookingAt });
             this.poseElapsed = 0;
         }

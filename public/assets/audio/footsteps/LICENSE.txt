@@ -1,0 +1,14 @@
+Asset: Footstep Concrete 000
+Creator: Kenney
+Asset ID: 39c65348e0282e47b05eca9d
+Published: 2026-10-18T23:00:01+00:00
+Original source: https://kenney.nl/assets/impact-sounds
+Asset page: https://instrictlogic.com/AssetLibrary/sounds/samples/footstep-concrete-000-39c65348/
+
+CC0 1.0
+
+Official license terms: https://creativecommons.org/publicdomain/zero/1.0/
+
+CC0 · public domain dedication · commercial use, resale and redistribution allowed
+
+Keep the creator, source and license information supplied with the asset. Consult the linked license for its complete terms.

@@ -1,5 +1,5 @@
-// Procedural Web Audio API Sound Engine
-// Zero latency, zero external sound files required.
+// Web Audio engine: recorded boot footsteps and procedural combat effects.
+import { CombatAudio } from './CombatAudio.js';
 
 class SoundEngine {
     constructor() {
@@ -7,6 +7,7 @@ class SoundEngine {
         this.masterGain = null;
         this.isMuted = false;
         this.initialized = false;
+        this.combat = new CombatAudio(this);
     }
 
     init() {
@@ -17,8 +18,13 @@ class SoundEngine {
         this.ctx = new AudioContextClass();
         this.masterGain = this.ctx.createGain();
         this.masterGain.gain.value = 0.5;
-        this.masterGain.connect(this.ctx.destination);
+        this.limiter=this.ctx.createDynamicsCompressor();
+        this.limiter.threshold.value=-10;this.limiter.knee.value=6;this.limiter.ratio.value=6;
+        this.limiter.attack.value=.003;this.limiter.release.value=.15;
+        this.masterGain.connect(this.limiter);this.limiter.connect(this.ctx.destination);
         this.initialized = true;
+        this.loadFootsteps();
+        this.combat.load();
 
         if (this.ctx.state === 'suspended') {
             const resumeAudio = () => {
@@ -40,8 +46,42 @@ class SoundEngine {
         }
     }
 
+    playUtility(kind,position=null) {
+        const key={bounce:'grenadeBounce',pin:'pin',throw:'throw',frag:'frag',smoke:'smoke'}[kind];
+        if(key&&this.playSample(key,{volume:kind==='frag'?.8:kind==='smoke'?.45:.3,position}))return;
+        this.ensureContext();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const duration = kind === 'frag' ? 0.6 : kind === 'smoke' ? 0.7 : kind === 'flash' ? 0.35 : 0.06;
+        const buffer = this.ctx.createBuffer(1, Math.ceil(this.ctx.sampleRate * duration), this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / data.length * 5);
+        const source = this.ctx.createBufferSource(); source.buffer = buffer;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = kind === 'flash' ? 'highpass' : 'lowpass';
+        filter.frequency.value = kind === 'frag' ? 650 : kind === 'flash' ? 1600 : 2200;
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(kind === 'frag' ? 0.8 : kind === 'flash' ? 0.3 : kind === 'smoke' ? 0.15 : 0.08, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        source.connect(filter); filter.connect(gain); gain.connect(this.masterGain); source.start(now);
+    }
+
+    playPistolShot() {
+        if(this.playSample('pistolShot',{volume:.7,group:'shots'})){this.playSample('casing',{volume:.09,delay:.22,group:'weapon'});return;}
+        this.ensureContext();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        this.playUtility('pistol');
+        const oscillator = this.ctx.createOscillator(), gain = this.ctx.createGain();
+        oscillator.frequency.setValueAtTime(180, now);
+        oscillator.frequency.exponentialRampToValueAtTime(55, now + 0.1);
+        gain.gain.setValueAtTime(0.4, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        oscillator.connect(gain); gain.connect(this.masterGain); oscillator.start(now); oscillator.stop(now + 0.13);
+    }
+
     // Heavy Sniper Rifle Shot (.338 Lapua / .50 Caliber Crack)
     playSniperShot() {
+        if(this.playSample('sniperShot',{volume:.9,group:'shots'}))return;
         this.ensureContext();
         if (!this.ctx) return;
         const now = this.ctx.currentTime;
@@ -103,6 +143,7 @@ class SoundEngine {
 
     // Bolt-action Cycling Sounds
     playBoltCycle() {
+        if(this.playSample('sniperBolt',{volume:.4,delay:.28,group:'weapon'})) {this.playSample('casing',{volume:.13,delay:.4,group:'weapon'});return;}
         this.ensureContext();
         if (!this.ctx) return;
         const now = this.ctx.currentTime;
@@ -140,6 +181,7 @@ class SoundEngine {
     }
 
     playCasingPing() {
+        if(this.playSample('casing',{volume:.15}))return;
         if (!this.ctx) return;
         const now = this.ctx.currentTime;
         const osc = this.ctx.createOscillator();
@@ -157,6 +199,7 @@ class SoundEngine {
 
     // Call of Duty Style Hitmarkers
     playHitmarker(isHeadshot = false) {
+        if(this.playSample(isHeadshot?'headshot':'hit',{volume:isHeadshot?.3:.22}))return;
         this.ensureContext();
         if (!this.ctx) return;
         const now = this.ctx.currentTime;
@@ -205,9 +248,39 @@ class SoundEngine {
     }
 
     // Footsteps: short boot scuff plus a low body thump. Slow walking is almost inaudible.
-    playFootstep(kind = 'run') {
+    async loadFootsteps() {
+        if(this.footstepLoading)return this.footstepLoading;
+        this.footstepLoading=fetch('/assets/audio/footsteps/samples.json').then(async response=>{
+            if(!response.ok)throw new Error('Footstep sample unavailable');
+            const pack=await response.json();
+            return Promise.all(pack.samples.map(async encoded=>{
+            const bytes=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));
+            const buffer=await this.ctx.decodeAudioData(bytes.buffer);
+            // Trim leading silence so sample onset coincides with the contact event.
+            let start=buffer.length;for(let channel=0;channel<buffer.numberOfChannels;channel++){
+                const data=buffer.getChannelData(channel);let peak=0;for(const n of data)peak=Math.max(peak,Math.abs(n));
+                const first=data.findIndex(n=>Math.abs(n)>peak*.025);if(first>=0)start=Math.min(start,first);
+            }
+            return {buffer,offset:Math.max(0,start-16)/buffer.sampleRate};
+            }));
+        }).then(samples=>{this.footstepSamples=samples;return samples;}).catch(()=>null);
+        return this.footstepLoading;
+    }
+    playFootstep(kind = 'run',side='Left') {
         this.ensureContext();
-        if (!this.ctx) return;
+        if (!this.ctx || this.isMuted) return;
+        if(this.footstepSamples?.length){
+            const count=this.footstepSamples.length;
+            const index=((this.lastFootstepSample??-1)+1+Math.floor(Math.random()*(count-1)))%count;
+            this.lastFootstepSample=index;
+            const sample=this.footstepSamples[index],source=this.ctx.createBufferSource(),gain=this.ctx.createGain();
+            source.buffer=sample.buffer;source.playbackRate.value=.97+Math.random()*.06;
+            gain.gain.value={sprint:.85,run:.55,walk:.18,crouch:.09,crouchRun:.23}[kind]??.55;
+            const pan=this.ctx.createStereoPanner();pan.pan.value=side==='Left'?-.08:.08;
+            source.connect(gain);gain.connect(pan);pan.connect(this.masterGain);
+            source.onended=()=>{source.disconnect();gain.disconnect();pan.disconnect();};
+            source.start(this.ctx.currentTime,sample.offset);return;
+        }
         const level = { sprint: 0.5, run: 0.3, walk: 0.1 }[kind] ?? 0.3;
         if (level <= 0) return;
         const now = this.ctx.currentTime;
@@ -247,6 +320,14 @@ class SoundEngine {
         thumpGain.connect(this.masterGain);
         thump.start(now);
         thump.stop(now + 0.12);
+    }
+
+    playWaterImpact(strength=34) {
+        if(typeof window==='undefined')return;
+        this.ensureContext();if(!this.ctx||this.isMuted)return;
+        const now=this.ctx.currentTime,duration=.24;
+        if(!this.waterNoise){this.waterNoise=this.ctx.createBuffer(1,Math.floor(this.ctx.sampleRate*duration),this.ctx.sampleRate);const samples=this.waterNoise.getChannelData(0);for(let i=0;i<samples.length;i++)samples[i]=(Math.random()*2-1)*(.55+.45*Math.sin(i*.07));}
+        const source=this.ctx.createBufferSource(),filter=this.ctx.createBiquadFilter(),gain=this.ctx.createGain();source.buffer=this.waterNoise;filter.type='lowpass';filter.frequency.setValueAtTime(1800,now);filter.frequency.exponentialRampToValueAtTime(240,now+duration);gain.gain.setValueAtTime(Math.min(.3,.05+Math.sqrt(strength)*.015),now);gain.gain.exponentialRampToValueAtTime(.001,now+duration);source.connect(filter);filter.connect(gain);gain.connect(this.masterGain);source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};source.start(now);
     }
 
     // Wooden door impact: dry splintering thud.
@@ -292,6 +373,7 @@ class SoundEngine {
 
     // Shattering pane: bright noise burst with a few falling glass pings.
     playGlassBreak() {
+        if(this.playSample('glassBreak',{volume:.6}))return;
         this.ensureContext();
         if (!this.ctx) return;
         const now = this.ctx.currentTime;
@@ -341,6 +423,7 @@ class SoundEngine {
     }
 
     playDoorOpen() {
+        if(this.playSample('door',{volume:.4}))return;
         this.ensureContext();
         if (!this.ctx) return;
         const now = this.ctx.currentTime;
@@ -410,6 +493,7 @@ class SoundEngine {
     }
 
     playLand() {
+        if(this.playSample('land',{volume:.25}))return;
         this.ensureContext();
         if (!this.ctx) return;
         const now = this.ctx.currentTime;
@@ -469,7 +553,12 @@ class SoundEngine {
         osc.stop(now + 0.36);
     }
 
-    playReload() {
+    playReload(slot='primary',duration=1.3,timing=null) {
+        const pistol=slot==='pistol',prefix=pistol?'pistol':'sniper';
+        if(this.playSample(prefix+'MagOut',{volume:.35,group:'reload'})){
+            this.playSample(prefix+'MagIn',{volume:.42,delay:Math.max(0,timing?.insert??duration*.58),group:'reload'});
+            this.playSample(pistol?'pistolSlide':'sniperBolt',{volume:.38,delay:Math.max(0,timing?.slide??duration*.82),group:'reload'});return;
+        }
         this.ensureContext();
         if (!this.ctx) return;
         setTimeout(() => this.playMechanicalClick(600, 0.08, 0.3), 100); // Mag release
@@ -478,6 +567,7 @@ class SoundEngine {
     }
 
     playScopeZoom(inOut = true) {
+        if(this.playSample('scope',{volume:.12,rate:inOut?1:1.1}))return;
         this.ensureContext();
         if (!this.ctx) return;
         const now = this.ctx.currentTime;
@@ -495,6 +585,19 @@ class SoundEngine {
         osc.start(now);
         osc.stop(now + 0.11);
     }
+    playSample(key,options) {
+        if(this.isMuted)return true;
+        // Keep server/unit-test environments inert, while browser calls initialize on demand.
+        if(!this.ctx && typeof window!=='undefined' && (window.AudioContext||window.webkitAudioContext))this.ensureContext();
+        return this.combat.play(key,options);
+    }
+    stopWeaponSounds() { this.combat.stop('reload');this.combat.stop('weapon'); }
+    playDraw(slot) { this.playSample(slot==='pistol'?'pistolSlide':'sniperDraw',{volume:.26,group:'weapon'}); }
+    playDryFire() { this.playSample('dryFire',{volume:.3}); }
+    playImpact(position) { this.playSample('impact',{volume:.25,rate:.95+Math.random()*.1,position}); }
+    playPain(position) { this.playSample(['pain1','pain2','pain3'][Math.floor(Math.random()*3)],{volume:.35,position}); }
+    playDeath(position) { this.playSample(Math.random()<.5?'death1':'death2',{volume:.4,position}); }
 }
 
 export const soundEngine = new SoundEngine();
+

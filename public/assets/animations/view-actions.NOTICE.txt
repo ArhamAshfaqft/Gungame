@@ -1,0 +1,13 @@
+Adapted first-person action trajectories
+
+Source: nine selected AnimationClip objects from the user-supplied local CS Metal
+build (E:\Builds), resources.assets IDs 1932, 1935, 1936, 1954, 1955, 2239,
+2174, 2209 and 1971. Imported at the user's explicit request.
+
+Original animation authors and redistribution terms have not been verified.
+The Christoph Peters CC0 notice found elsewhere in that bundle has not been
+established to cover these clips. This file does not grant or assert a license
+for the source animations. Preserve this provenance when reviewing publication.
+
+Only bounded, resampled wrist motion is included. No source character meshes,
+sounds, textures, game scripts, network services or executable binaries are used.

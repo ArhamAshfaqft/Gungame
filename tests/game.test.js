@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { setMaxListeners } from 'node:events';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { MovementController } from '../src/player/MovementController.js';
@@ -7,6 +8,7 @@ import { soundEngine } from '../src/audio/SoundEngine.js';
 
 globalThis.window = new EventTarget();
 globalThis.document = new EventTarget();
+setMaxListeners(0, window, document);
 for (const method of ['playLand', 'playJumpPad', 'playSlide', 'playJump', 'playHitmarker']) soundEngine[method] = () => {};
 const player = () => new MovementController(new THREE.PerspectiveCamera(), new EventTarget());
 const box = (min, max) => new THREE.Box3(new THREE.Vector3(...min), new THREE.Vector3(...max));
@@ -31,6 +33,7 @@ test('slide eye height stays above the floor and returns to standing', () => {
     assert.ok(p.camera.position.y >= p.slideHeight - 0.001);
     assert.ok(p.camera.position.y < 1);
     p.cancelSlide();
+    if (p.isCrouching) p.toggleCrouch();
     for (let i = 0; i < 90; i++) p.update(1 / 60);
     assert.ok(Math.abs(p.position.y - p.standHeight) < 0.001);
 });
@@ -63,16 +66,16 @@ test('Q and E lean the camera left and right', () => {
     p.onKeyChange('KeyE', true);
     for (let i = 0; i < 60; i++) p.update(1 / 60);
     assert.ok(p.lean > 0.9);
-    assert.ok(p.leanOffset > 0.35);
-    assert.ok(p.camera.position.x > p.position.x + 0.35);
+    assert.ok(p.leanOffset > 0.30);
+    assert.ok(p.camera.position.x > p.position.x + 0.30);
     assert.ok(p.camera.rotation.z < -0.05);
 
     p.onKeyChange('KeyE', false);
     p.onKeyChange('KeyQ', true);
     for (let i = 0; i < 60; i++) p.update(1 / 60);
     assert.ok(p.lean < -0.9);
-    assert.ok(p.leanOffset < -0.35);
-    assert.ok(p.camera.position.x < p.position.x - 0.35);
+    assert.ok(p.leanOffset < -0.30);
+    assert.ok(p.camera.position.x < p.position.x - 0.30);
     assert.ok(p.camera.rotation.z > 0.05);
 
     p.onKeyChange('KeyQ', false);
@@ -204,7 +207,9 @@ test('Ctrl no longer starts a slide, so Ctrl+W cannot close the tab', () => {
     const p = player();
     p.isGrounded = true;
     p.keys.forward = true;
-    p.velocity.set(0, 0, -10);
+    p.velocity.set(0, 0, -p.sprintSpeed);
+    p.isSprinting = true;
+    p.keys.sprint = true;
     p.onKeyChange('ControlLeft', true);
     assert.equal(p.isSliding, false);
     p.onKeyChange('KeyC', true);
@@ -216,9 +221,10 @@ test('slopes support continuous uphill movement', () => {
     const ramp = box([-3, 0, 4], [3, 3.75, 16]);
     ramp.ramp = { position: new THREE.Vector3(0, 0, 10), width: 6, height: 3.75, length: 12, rotation: 0 };
     p.position.set(0, p.standHeight, 16);
+    p.yaw = 0;
     p.isGrounded = true;
     p.keys.forward = true;
-    for (let i = 0; i < 60; i++) p.update(1 / 60, [ramp]);
+    for (let i = 0; i < 150; i++) p.update(1 / 60, [ramp]);
     assert.ok(p.position.z < 10);
     assert.ok(p.position.y > 3.5);
     assert.equal(p.isGrounded, true);
@@ -247,4 +253,12 @@ test('weapon update and raycast use supported Three.js APIs and ignore dead bots
     target.userData.bot.isAlive = false;
     weapon.performRaycast();
     assert.equal(hits, 1);
+});
+
+test('stacked hollow stair flights allow walking underneath and climbing the lower flight',()=>{
+ const p=player();p.position.set(0,1.65,3.4);p.yaw=0;p.isGrounded=true;p.keys.forward=p.keys.walk=true;
+ const make=base=>{const b=box([-1.2,base,-3.5],[1.2,base+3.4,3.5]);b.ramp={position:new THREE.Vector3(0,base,0),width:2.4,length:7,height:3.4,rotation:0,thickness:.26};return b;};
+ const low=make(0),high=make(3.4);
+ for(let i=0;i<300;i++)p.update(1/60,[low,high]);
+ assert.ok(Math.abs(p.position.x)<.01);assert.ok(p.position.z<0);assert.ok(p.position.y>4);
 });

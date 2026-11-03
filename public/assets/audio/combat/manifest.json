@@ -1,0 +1,269 @@
+{
+  "version": 1,
+  "placeholder": true,
+  "source": "User-provided E:\\Builds\\builds_Data\\data.unity3d",
+  "license": "Not established; no open-source or redistribution license asserted. Temporary user-requested placeholders.",
+  "clips": [
+    {
+      "key": "headshot",
+      "asset": "sharedassets0.assets",
+      "pathId": 983,
+      "sourceName": "Res-headShootSound.",
+      "duration": 0.6952380952380952,
+      "rawFile": "artifacts\\cs-audio\\raw\\headshot.wav",
+      "file": "headshot.wav"
+    },
+    {
+      "key": "uiHover",
+      "asset": "sharedassets0.assets",
+      "pathId": 985,
+      "sourceName": "buttonrollover",
+      "duration": 0.07478458049886622,
+      "rawFile": "artifacts\\cs-audio\\raw\\uiHover.wav",
+      "file": "uiHover.wav"
+    },
+    {
+      "key": "hit",
+      "asset": "sharedassets0.assets",
+      "pathId": 986,
+      "sourceName": "hit",
+      "duration": 0.41564625850340137,
+      "rawFile": "artifacts\\cs-audio\\raw\\hit.wav",
+      "file": "hit.wav"
+    },
+    {
+      "key": "pain1",
+      "asset": "sharedassets0.assets",
+      "pathId": 987,
+      "sourceName": "pain_01",
+      "duration": 0.3166439909297052,
+      "rawFile": "artifacts\\cs-audio\\raw\\pain1.wav",
+      "file": "pain1.wav"
+    },
+    {
+      "key": "scope",
+      "asset": "sharedassets0.assets",
+      "pathId": 997,
+      "sourceName": "!Game-Zoom.",
+      "duration": 0.4689795918367347,
+      "rawFile": "artifacts\\cs-audio\\raw\\scope.wav",
+      "file": "scope.wav"
+    },
+    {
+      "key": "dryFire",
+      "asset": "sharedassets0.assets",
+      "pathId": 1026,
+      "sourceName": "!Game-dryFire",
+      "duration": 0.11678004535147392,
+      "rawFile": "artifacts\\cs-audio\\raw\\dryFire.wav",
+      "file": "dryFire.wav"
+    },
+    {
+      "key": "glassBreak",
+      "asset": "sharedassets0.assets",
+      "pathId": 1031,
+      "sourceName": "bustglass1",
+      "duration": 1.4285260770975057,
+      "rawFile": "artifacts\\cs-audio\\raw\\glassBreak.wav",
+      "file": "glassBreak.wav"
+    },
+    {
+      "key": "grenadeBounce",
+      "asset": "sharedassets0.assets",
+      "pathId": 1062,
+      "sourceName": "grenade_hit1",
+      "duration": 0.5759183673469388,
+      "rawFile": "artifacts\\cs-audio\\raw\\grenadeBounce.wav",
+      "file": "grenadeBounce.wav"
+    },
+    {
+      "key": "sniperShot",
+      "asset": "sharedassets0.assets",
+      "pathId": 1069,
+      "sourceName": "Player-AWP Sniper-shootSound2.",
+      "duration": 2.3127437641723354,
+      "rawFile": "artifacts\\cs-audio\\raw\\sniperShot.wav",
+      "file": "sniperShot.wav"
+    },
+    {
+      "key": "frag",
+      "asset": "sharedassets0.assets",
+      "pathId": 1077,
+      "sourceName": "grenadeItem-SoundExpl2.",
+      "duration": 1.8370975056689343,
+      "rawFile": "artifacts\\cs-audio\\raw\\frag.wav",
+      "file": "frag.wav"
+    },
+    {
+      "key": "door",
+      "asset": "sharedassets0.assets",
+      "pathId": 1085,
+      "sourceName": "door",
+      "duration": 2.122312925170068,
+      "rawFile": "artifacts\\cs-audio\\raw\\door.wav",
+      "file": "door.wav"
+    },
+    {
+      "key": "smoke",
+      "asset": "sharedassets0.assets",
+      "pathId": 1092,
+      "sourceName": "smokeGrenadeItem-SoundExpl2.",
+      "duration": 0.8155555555555556,
+      "rawFile": "artifacts\\cs-audio\\raw\\smoke.wav",
+      "file": "smoke.wav"
+    },
+    {
+      "key": "land",
+      "asset": "sharedassets0.assets",
+      "pathId": 1106,
+      "sourceName": "pl_fallpain5",
+      "duration": 0.4149206349206349,
+      "rawFile": "artifacts\\cs-audio\\raw\\land.wav",
+      "file": "land.wav"
+    },
+    {
+      "key": "pistolShot",
+      "asset": "sharedassets0.assets",
+      "pathId": 1141,
+      "sourceName": "Player-Glock19-shootSound2.",
+      "duration": 1.1029931972789115,
+      "rawFile": "artifacts\\cs-audio\\raw\\pistolShot.wav",
+      "file": "pistolShot.wav"
+    },
+    {
+      "key": "pain2",
+      "asset": "sharedassets0.assets",
+      "pathId": 1167,
+      "sourceName": "pain_02",
+      "duration": 0.28607709750566895,
+      "rawFile": "artifacts\\cs-audio\\raw\\pain2.wav",
+      "file": "pain2.wav"
+    },
+    {
+      "key": "pain3",
+      "asset": "sharedassets0.assets",
+      "pathId": 1205,
+      "sourceName": "pain_03",
+      "duration": 0.31124716553287984,
+      "rawFile": "artifacts\\cs-audio\\raw\\pain3.wav",
+      "file": "pain3.wav"
+    },
+    {
+      "key": "impact",
+      "asset": "sharedassets0.assets",
+      "pathId": 1248,
+      "sourceName": "hitWall",
+      "duration": 0.41687074829931975,
+      "rawFile": "artifacts\\cs-audio\\raw\\impact.wav",
+      "file": "impact.wav"
+    },
+    {
+      "key": "pistolMagIn",
+      "asset": "resources.assets",
+      "pathId": 2390,
+      "sourceName": "usp_clipin",
+      "duration": 0.6867120181405896,
+      "rawFile": "artifacts\\cs-audio\\raw\\pistolMagIn.wav",
+      "file": "pistolMagIn.wav"
+    },
+    {
+      "key": "pistolMagOut",
+      "asset": "resources.assets",
+      "pathId": 2425,
+      "sourceName": "usp_clipout",
+      "duration": 1.3112925170068028,
+      "rawFile": "artifacts\\cs-audio\\raw\\pistolMagOut.wav",
+      "file": "pistolMagOut.wav"
+    },
+    {
+      "key": "sniperDraw",
+      "asset": "resources.assets",
+      "pathId": 2435,
+      "sourceName": "awp_deploy",
+      "duration": 0.5047619047619047,
+      "rawFile": "artifacts\\cs-audio\\raw\\sniperDraw.wav",
+      "file": "sniperDraw.wav"
+    },
+    {
+      "key": "sniperMagOut",
+      "asset": "resources.assets",
+      "pathId": 2438,
+      "sourceName": "awp_clipout",
+      "duration": 0.48099773242630384,
+      "rawFile": "artifacts\\cs-audio\\raw\\sniperMagOut.wav",
+      "file": "sniperMagOut.wav"
+    },
+    {
+      "key": "death1",
+      "asset": "resources.assets",
+      "pathId": 2445,
+      "sourceName": "death_03",
+      "duration": 2.381814058956916,
+      "rawFile": "artifacts\\cs-audio\\raw\\death1.wav",
+      "file": "death1.wav"
+    },
+    {
+      "key": "death2",
+      "asset": "resources.assets",
+      "pathId": 2449,
+      "sourceName": "death_04",
+      "duration": 1.3974603174603175,
+      "rawFile": "artifacts\\cs-audio\\raw\\death2.wav",
+      "file": "death2.wav"
+    },
+    {
+      "key": "pistolSlide",
+      "asset": "resources.assets",
+      "pathId": 2456,
+      "sourceName": "glock_slideback",
+      "duration": 0.36272108843537415,
+      "rawFile": "artifacts\\cs-audio\\raw\\pistolSlide.wav",
+      "file": "pistolSlide.wav"
+    },
+    {
+      "key": "casing",
+      "asset": "resources.assets",
+      "pathId": 2458,
+      "sourceName": "ping",
+      "duration": 0.3892517006802721,
+      "rawFile": "artifacts\\cs-audio\\raw\\casing.wav",
+      "file": "casing.wav"
+    },
+    {
+      "key": "throw",
+      "asset": "resources.assets",
+      "pathId": 2482,
+      "sourceName": "knife_slash1",
+      "duration": 0.3564625850340136,
+      "rawFile": "artifacts\\cs-audio\\raw\\throw.wav",
+      "file": "throw.wav"
+    },
+    {
+      "key": "sniperMagIn",
+      "asset": "resources.assets",
+      "pathId": 2485,
+      "sourceName": "awp_clipin",
+      "duration": 0.2439455782312925,
+      "rawFile": "artifacts\\cs-audio\\raw\\sniperMagIn.wav",
+      "file": "sniperMagIn.wav"
+    },
+    {
+      "key": "sniperBolt",
+      "asset": "resources.assets",
+      "pathId": 2488,
+      "sourceName": "rifle_slideback",
+      "duration": 0.3302040816326531,
+      "rawFile": "artifacts\\cs-audio\\raw\\sniperBolt.wav",
+      "file": "sniperBolt.wav"
+    },
+    {
+      "key": "pin",
+      "asset": "resources.assets",
+      "pathId": 2512,
+      "sourceName": "flashlight-clicking-on-105809",
+      "duration": 0.40789115646258506,
+      "rawFile": "artifacts\\cs-audio\\raw\\pin.wav",
+      "file": "pin.wav"
+    }
+  ]
+}
