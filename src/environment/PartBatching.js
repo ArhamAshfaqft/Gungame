@@ -7,7 +7,7 @@ export function batchStaticParts(map,selection=null){
  if(selection)selection.forEach(include);else map.scene.traverse(include);
  for(const [material,objects] of groups){if(objects.length<3)continue;
   const records=new Map(),geometries=[],sourceBounds=new Map();let indexStart=0,vertexStart=0;
-  for(const object of objects){const g=object.geometry.clone().applyMatrix4(object.matrixWorld);g.deleteAttribute('color');records.set(object,{indexStart,vertexStart,count:g.index?.count||g.attributes.position.count});if(!g.index)g.setIndex(Array.from({length:g.attributes.position.count},(_,i)=>i));indexStart+=g.index.count;vertexStart+=g.attributes.position.count;geometries.push(g);}
+  for(const object of objects){const g=object.geometry.clone().applyMatrix4(object.matrixWorld);if(!material.vertexColors)g.deleteAttribute('color');else if(!g.attributes.color)g.setAttribute('color',new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count*3).fill(1),3));records.set(object,{indexStart,vertexStart,count:g.index?.count||g.attributes.position.count});if(!g.index)g.setIndex(Array.from({length:g.attributes.position.count},(_,i)=>i));indexStart+=g.index.count;vertexStart+=g.attributes.position.count;geometries.push(g);}
   for(const object of objects){if(!object.geometry.boundingBox)object.geometry.computeBoundingBox();sourceBounds.set(object,object.geometry.boundingBox.clone().applyMatrix4(object.matrixWorld));}
   const geometry=mergeGeometries(geometries,false);for(const g of geometries)g.dispose();if(!geometry)continue;
   geometry.index.setUsage(THREE.DynamicDrawUsage);geometry.computeBoundingBox();geometry.computeBoundingSphere();const bounds=geometry.boundingBox.clone(),active=new Set(objects);

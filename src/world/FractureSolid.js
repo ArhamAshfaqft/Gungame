@@ -57,3 +57,17 @@ export function projectileChannel(point,direction,thickness,energy){
  for(let i=0;i<7;i++){const a=i/7*Math.PI*2,offset=u.clone().multiplyScalar(Math.cos(a)*radius).addScaledVector(v,Math.sin(a)*radius);points.push(start.clone().add(offset),end.clone().addScaledVector(offset,1.6));}
  return new ConvexHull().setFromPoints(points).faces.map(face=>new THREE.Plane(face.normal.clone(),-face.constant));
 }
+
+// New cut faces inherit the source part's base tint (e.g. exposed cabinet wood).
+// Geometry workers carry colour attributes already, so this works on both paths.
+export function inheritSurfaceColor(source,target){
+ const scale=source.parameters?.surfaceUvScale;
+ if(scale){
+  target.parameters={...source.parameters};const p=target.attributes.position,n=target.attributes.normal,uv=target.attributes.uv;
+  for(let i=0;i<p.count;i++)uv.setXY(i,(Math.abs(n.getX(i))>.5?p.getZ(i):p.getX(i))/scale,(Math.abs(n.getY(i))>.5?p.getZ(i):p.getY(i))/scale);
+ }
+ const color=source.attributes.color;if(!color||target.attributes.color)return target;
+ const values=new Float32Array(target.attributes.position.count*3);
+ for(let i=0;i<values.length;i+=3){values[i]=color.getX(0);values[i+1]=color.getY(0);values[i+2]=color.getZ(0);}
+ target.setAttribute('color',new THREE.BufferAttribute(values,3));return target;
+}

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {boxSolid,subtractSolid,solidsGeometry} from './FractureSolid.js';
+import {boxSolid,subtractSolid,solidsGeometry,inheritSurfaceColor} from './FractureSolid.js';
 import {invalidateSupport} from './SupportIndex.js';
 import {collisionVolumes} from '../environment/CollisionVolumes.js';
 const movingCollisions=new WeakMap();
@@ -60,6 +60,6 @@ export function severSlenderWood(mesh,point,colliders){
  const solids=(mesh.userData.fractureSolids||[boxSolid(box)]).flatMap(s=>subtractSolid(s,planes)).filter(s=>{
   const bounds=new THREE.Box3().setFromPoints(s.flat());return bounds.min[axis]<=anchors.min+.002||bounds.max[axis]>=anchors.max-.002;
  });
- const geometry=solidsGeometry(solids);mesh.geometry.dispose();mesh.geometry=geometry;mesh.userData.fractureSolids=solids;mesh.userData.jointCuts=(mesh.userData.jointCuts||0)+1;
+ const geometry=inheritSurfaceColor(mesh.geometry,solidsGeometry(solids));mesh.geometry.dispose();mesh.geometry=geometry;mesh.userData.fractureSolids=solids;mesh.userData.jointCuts=(mesh.userData.jointCuts||0)+1;
  if(!solids.length)removeProp(mesh,colliders);else syncDamagedCollision(mesh,colliders);return true;
 }

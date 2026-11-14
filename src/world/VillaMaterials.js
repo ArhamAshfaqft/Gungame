@@ -7,7 +7,9 @@ function maps(kind,base,size=256){
  let seed=731;const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
  for(let y=0;y<size;y++)for(let x=0;x<size;x++){
   const noise=rand()-.5,u=x/size,v=y/size;let grain=0,height=.55,r=.8;
-  if(kind==='door'){
+  if(kind==='veneer'){
+   grain=Math.sin(x*.65+Math.sin(y*.015)*1.3)*3+Math.sin(x*2.8+y*.006)*1.2+noise*3;height=.5+noise*.025;r=.55+noise*.025;
+  }else if(kind==='door'){
    // Continuous vertical grain and recessed joinery, never floorboard joints.
    grain=Math.sin(x*.8+Math.sin(y*.018)*1.6)*3+Math.sin(x*2.9+y*.005)*1.5+noise*3;
    const edge=Math.min(u,1-u),inPanel=edge>.13&&edge<.44&&v>.095&&v<.905;
@@ -25,6 +27,9 @@ function maps(kind,base,size=256){
    const vein=Math.abs(Math.sin(u*10+Math.sin(v*9)*2+Math.sin(u*31+v*12)*.2));grain=(vein<.1?-32:0)+noise*5;height=.5;r=.3+noise*.04;
   }else if(kind==='terrazzo'){
    const chip=rand()>.94;grain=noise*8+(chip?(rand()-.5)*90:0);height=.5;r=.63;
+  }else if(kind==='foliage'){
+   const vein=Math.abs(u-.5)<.014||Math.abs(Math.sin(v*74-Math.abs(u-.5)*12))<.1;
+   grain=(vein?12:0)+Math.sin(v*3.14)*8-Math.abs(u-.5)*12+noise*3;height=.5+(vein?.04:0);r=.8;
   }else if(kind==='fabric'){
    grain=(x%3===0?-10:0)+(y%3===0?-6:0)+noise*10;height=.5+(x%3===0?-.2:0)+(y%3===0?-.1:0);r=.95;
   }else if(kind==='rug'){
@@ -49,6 +54,8 @@ export function upgradeVillaMaterials(map){
  make('epoxy','terrazzo',[92,102,99],{bumpScale:.006});make('bathTile','marble',[106,125,121],{bumpScale:.003});
  make('floorPanel','oak',[137,105,67],{vertexColors:true,bumpScale:.012});
  m.wood.dispose();make('wood','walnut',[107,76,46],{bumpScale:.02});m.woodPanel.dispose();make('woodPanel','oak',[120,86,51],{vertexColors:true});
+ make('furnitureOak','veneer',[151,120,80],{bumpScale:.005});
+ make('furnitureWalnut','veneer',[91,66,47],{bumpScale:.005});
  make('doorLeaf','door',[105,78,53],{vertexColors:true,bumpScale:.009});
  m.doorHardware=new THREE.MeshStandardMaterial({color:0x9a9e9b,metalness:.85,roughness:.34});
  make('curtain','fabric',[169,162,144],{side:THREE.DoubleSide});
@@ -58,6 +65,7 @@ export function upgradeVillaMaterials(map){
  m.ochre.dispose();make('ochre','fabric',[139,96,54],{bumpScale:.018});
  m.glass.opacity=.15;m.glass.color.setHex(0xc8ddd9);
  for(const [name,color] of [['sageWall',0xa5b0a1],['blueWall',0x8b9b9c],['sandWall',0xc5bda9],['wineWall',0xa79784]]){m[name]=m.softWall.clone();m[name].color.setHex(color);}
+ const foliage=maps('foliage',[125,151,101]);for(const name of ['leaf','leafLight']){m[name].map=foliage.map;m[name].roughness=.85;}
  m.glowWarm=new THREE.MeshBasicMaterial({color:0xffe2ac});m.glowCool=new THREE.MeshBasicMaterial({color:0xb3dedf});
  m.glowAmber=new THREE.MeshBasicMaterial({color:0xcf7331});
  map.materials=m;

@@ -1,3 +1,4 @@
+import {polishVillaProps} from './VillaProps.js';
 import {paintingMaterial} from './VillaArtwork.js';
 import * as THREE from 'three';
 import {alignedOpenings,partitionJunctions} from './WallLayout.js';
@@ -51,7 +52,7 @@ export class VillaMap{
   this.blastScars=new BlastScars();
   this.environment=new EnvironmentSystem(this);
   this.liquids=new LiquidSystem(this);
-  this.collectWalls=true;this.seatingSpecs=[];this.decor=[];this.wallSpecs=[];this.artRequests=[];this.artMounts=[];this.floorSurfaces=[];this.floorOverlays=[];this.rugSpecs=[];this.roomLights=[];this.lighting();this.site();this.shell();buildVillaInteriors(this);buildGalleryWing(this);buildWellnessWing(this);this.buildWalls();buildWindowDressings(this);this.garden();this.finishArchitecture();this.mountArtwork();this.projectRugs();bindFixtureDecor(this);this.environment.observeScene();this.contactShadows();this.batchDecor();batchVillaPanels(this);batchVillaProps(this);accelerateSceneRaycasts(this.scene);
+  this.collectWalls=true;this.seatingSpecs=[];this.decor=[];this.wallSpecs=[];this.artRequests=[];this.artMounts=[];this.floorSurfaces=[];this.floorOverlays=[];this.rugSpecs=[];this.roomLights=[];this.lighting();this.site();this.shell();buildVillaInteriors(this);buildGalleryWing(this);buildWellnessWing(this);this.buildWalls();buildWindowDressings(this);this.garden();this.finishArchitecture();polishVillaProps(this);this.mountArtwork();this.projectRugs();bindFixtureDecor(this);this.environment.observeScene();this.contactShadows();this.batchDecor();batchVillaPanels(this);batchVillaProps(this);accelerateSceneRaycasts(this.scene);
  }
  box(x,y,z,w,h,d,material='plaster',solid=true,decor=false,options={}){
   if(material==='marble'&&h<.2&&!options.unlayered)return countertop(this,{x,y,z,width:w,height:h,depth:d,material});
@@ -214,7 +215,7 @@ export class VillaMap{
  }
  table(x,y,z,w,d,h){
   const group=new THREE.Group();group.position.set(x,y,z);this.scene.add(group);
-  const top=this.box(0,h,0,w,.12,d,'wood');top.removeFromParent();group.add(top);
+  const top=this.box(0,h,0,w,.12,d,'wood');top.name='Villa table top';top.removeFromParent();group.add(top);
   for(const a of [-1,1])for(const b of [-1,1]){const leg=this.box(a*(w/2-.18),h/2,b*(d/2-.15),.08,h,.08,'metal',false,true);leg.removeFromParent();group.add(leg);leg.userData.decorOwner=top;}
   const tray=this.box(Math.min(.4,Math.max(0,w/2-.23)),h+.08,0,.4,.06,.28,'ochre',false,true);tray.removeFromParent();group.add(tray);tray.userData.decorOwner=top;
   group.updateMatrixWorld(true);top.userData.collider.setFromObject(top);registerFloorFixture(this,group,[top],rectangularFeet(w-.36,d-.3));return top;
@@ -227,7 +228,7 @@ export class VillaMap{
   group.updateMatrixWorld(true);for(const mesh of solids)mesh.userData.collider.setFromObject(mesh);registerFloorFixture(this,group,solids,rectangularFeet(.48,.46));return seat;
  }
  bedroom(x,y,z,guest=false){
-  this.box(x,y+.25,z,guest?2:2.4,.5,2.9,'wood');materialPart(this.box(x,y+.58,z,guest?1.96:2.36,.28,2.85,'white'),'cloth');materialPart(this.box(x,y+.76,z+.4,guest?2:2.4,.12,1.8,guest?'navy':'ochre',false,true),'cloth');
+  this.box(x,y+.25,z,guest?2:2.4,.5,2.9,'wood').name='Bed platform';materialPart(this.box(x,y+.58,z,guest?1.96:2.36,.28,2.85,'white'),'cloth');materialPart(this.box(x,y+.76,z+.4,guest?2:2.4,.12,1.8,guest?'navy':'ochre',false,true),'cloth');
   this.box(x,y+.85,z-1.5,guest?2.8:3.4,1.5,.18,'fabric');for(const a of [-1,1]){materialPart(this.box(x+a*.55,y+.79,z-.9,.85,.14,.55,'white',false,true),'cloth');this.box(x+a*1.9,y+.37,z-1,.75,.74,.7,'wood');this.cylinder(x+a*1.9,y+.95,z-1,.19,.4,'white');}
   this.art(x,y+2.25,10.84,2.4,.9);this.box(x>0?13.4:-13.4,y+1.3,z-2.5,.85,2.6,3.6,'wood');this.plant(x-3,y,z+2,.4);
  }
@@ -247,11 +248,11 @@ export class VillaMap{
   for(const z of [-8,-5])this.cylinder(13.5,2.8,z,.12,6,'steel').rotation.x=Math.PI/2;
  }
  plant(x,y,z,r=.4){
-  const pot=this.cylinder(x,y+r*.55,z,r*.62,r*1.1,'darkStone');
+  const pot=this.cylinder(x,y+r*.55,z,r*.62,r*1.1,'darkStone');pot.name='Plant pot';
   for(let i=0;i<11;i++){
    const angle=i*2.399,length=r*(1.5+(i%4)*.28),width=r*(.26+(i%3)*.05),positions=[],uv=[];
-   for(let j=0;j<8;j++){const t=j/7,half=Math.sin(Math.PI*t)*width;for(const side of [-1,1]){positions.push(side*half,t*length,Math.sin(t*Math.PI)*length*.2);uv.push(side<0?0:1,t);}}
-   const indices=[];for(let j=0;j<7;j++){const a=j*2;indices.push(a,a+1,a+2,a+1,a+3,a+2);}
+   for(let j=0;j<5;j++){const t=j/4,half=Math.sin(Math.PI*t)*width;for(const side of [-1,1]){positions.push(side*half,t*length,Math.sin(t*Math.PI)*length*.2-Math.abs(half)*.35);uv.push(side<0?0:1,t);}}
+   const indices=[];for(let j=0;j<4;j++){const a=j*2;indices.push(a,a+1,a+2,a+1,a+3,a+2);}
    const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geometry.setIndex(indices);geometry.computeVertexNormals();
    const material=this.materials[i%3?'leaf':'leafLight'];material.side=THREE.DoubleSide;
    const leaf=new THREE.Mesh(geometry,material);leaf.position.set(x+Math.sin(angle)*r*.1,y+r*.9,z+Math.cos(angle)*r*.1);leaf.quaternion.setFromUnitVectors(V(0,1,0),V(Math.sin(angle)*.6,.8,Math.cos(angle)*.6).normalize());leaf.rotateY(angle);leaf.castShadow=true;this.scene.add(leaf);this.decor.push(leaf);
@@ -378,7 +379,7 @@ export class VillaMap{
   // Keep independently damageable source parts, batched until their first hit.
   this.decor=this.decor.filter(mesh=>{if(!mesh.userData.damageablePart)return true;const owner=mesh.userData.decorOwner;if(owner&&mesh.parent!==owner)owner.attach(mesh);return false;});
   const groups=new Map();for(const mesh of this.decor){mesh.updateWorldMatrix(true,false);const owner=mesh.userData.decorOwner,key=mesh.material.uuid+(owner?.uuid||'');if(!groups.has(key))groups.set(key,{material:mesh.material,owner,meshes:[]});groups.get(key).meshes.push(mesh);}
-  for(const {material,owner,meshes} of groups.values()){const geometries=meshes.map(m=>{const g=m.geometry.clone().applyMatrix4(m.matrixWorld);g.deleteAttribute('color');if(!g.index)return g;const flat=g.toNonIndexed();g.dispose();return flat;});const merged=mergeGeometries(geometries,false);for(const g of geometries)g.dispose();if(!merged)continue;const mesh=new THREE.Mesh(merged,material);mesh.name='Villa architectural details';mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData={isShootable:false,surface:material.userData.surface||'concrete',staticDetail:true};if(owner){merged.applyMatrix4(owner.matrixWorld.clone().invert());owner.add(mesh);}else this.scene.add(mesh);for(const m of meshes){m.removeFromParent();m.geometry.dispose();}}
+  for(const {material,owner,meshes} of groups.values()){const geometries=meshes.map(m=>{const g=m.geometry.clone().applyMatrix4(m.matrixWorld);if(!material.vertexColors)g.deleteAttribute('color');else if(!g.attributes.color)g.setAttribute('color',new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count*3).fill(1),3));if(!g.index)return g;const flat=g.toNonIndexed();g.dispose();return flat;});const merged=mergeGeometries(geometries,false);for(const g of geometries)g.dispose();if(!merged)continue;const mesh=new THREE.Mesh(merged,material);mesh.name='Villa architectural details';mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData={isShootable:false,surface:material.userData.surface||'concrete',staticDetail:true};if(owner){merged.applyMatrix4(owner.matrixWorld.clone().invert());owner.add(mesh);}else this.scene.add(mesh);for(const m of meshes){m.removeFromParent();m.geometry.dispose();}}
   this.decor=[];
  }
  rubbleFloor(point,ceiling=point.y+.01){

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {environmentalDamage} from '../weapons/WeaponProfiles.js';
-import {boxSolid,fracturePlanes,subtractSolid,solidsGeometry,projectileChannel} from './FractureSolid.js';
+import {boxSolid,fracturePlanes,subtractSolid,solidsGeometry,projectileChannel,inheritSurfaceColor} from './FractureSolid.js';
 export function subtractBox(solid,cut){
  if(!solid.intersectsBox(cut))return[solid.clone()];
  const overlap=solid.clone().intersect(cut);if(overlap.isEmpty())return[solid.clone()];
@@ -19,7 +19,7 @@ export function chipBox(mesh,localPoint,localNormal,radius,depth){
  const next=mesh.userData.fractureSolids.flatMap(solid=>subtractSolid(solid,planes));
  if(next.length>128)return false;
  if(!next.length){mesh.visible=false;mesh.userData.isShootable=false;mesh.userData.fractureSolids=[];return true;}
- const geometry=solidsGeometry(next);if(geometry.attributes.position.count>50000){geometry.dispose();return false;}
+ const geometry=inheritSurfaceColor(mesh.geometry,solidsGeometry(next));if(geometry.attributes.position.count>50000){geometry.dispose();return false;}
  mesh.geometry.dispose();mesh.geometry=geometry;mesh.userData.fractureSolids=next;mesh.userData.surfaceCuts=(mesh.userData.surfaceCuts||0)+1;return true;
 }
 export function hitMaterial(mesh){
@@ -33,7 +33,7 @@ export function punctureProp(mesh,point,direction,thickness,energy){
  if(mesh.userData.projectileHoles?.some(p=>p.distanceToSquared(point)<.012**2))return false;
  if(!mesh.userData.fractureSolids){if(mesh.geometry.type!=='BoxGeometry')return false;mesh.geometry.computeBoundingBox();mesh.userData.fractureSolids=[boxSolid(mesh.geometry.boundingBox)];}
  const planes=projectileChannel(point,direction,thickness,energy),solids=mesh.userData.fractureSolids.flatMap(s=>subtractSolid(s,planes));if(solids.length>128)return false;
- const geometry=solidsGeometry(solids);if(geometry.attributes.position.count>50000){geometry.dispose();return false;}
+ const geometry=inheritSurfaceColor(mesh.geometry,solidsGeometry(solids));if(geometry.attributes.position.count>50000){geometry.dispose();return false;}
  mesh.geometry.dispose();mesh.geometry=geometry;mesh.userData.fractureSolids=solids;(mesh.userData.projectileHoles??=[]).push(point.clone());return true;
 }
 // Environmental strength uses the same weapon damage baseline, with range and penetration loss.
