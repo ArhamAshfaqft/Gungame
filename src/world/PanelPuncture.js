@@ -46,7 +46,7 @@ export function puncturePanel(panel,worldPoint,worldDirection,energy,{depth=null
    if(!g){g=solidsGeometry(solids||[prism(piece,thickness)]);cache.set(piece.id,{solids,geometry:g});created.push(g);}
    const p=g.attributes.position,n=g.attributes.normal;
    for(let i=0;i<p.count;i++){
-    positions.push(p.getX(i),p.getY(i),p.getZ(i));normals.push(n.getX(i),n.getY(i),n.getZ(i));uvs.push(p.getX(i)/2,p.getY(i)/2);
+    positions.push(p.getX(i),p.getY(i),p.getZ(i));normals.push(n.getX(i),n.getY(i),n.getZ(i));uvs.push(p.getX(i)/(panel.isDoor?panel.width:2),p.getY(i)/(panel.isDoor?panel.height:2));
     colors.push(...(Math.abs(n.getZ(i))>.99?[1,1,1]:panel.mesh.userData.physicalMaterial==='plaster'?[.7,.68,.64]:[.64,.43,.25]));
     if(i%3===0)facePieces.push(piece.id);
    }

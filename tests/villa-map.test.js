@@ -1,3 +1,4 @@
+import {puncturePanel} from '../src/world/PanelPuncture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -253,4 +254,17 @@ test('authored walls keep one paint across fracture sections and doors retain br
  const uv=door.mesh.geometry.attributes.uv;for(let i=0;i<uv.count;i++){assert.ok(uv.getX(i)>=-.001&&uv.getX(i)<=1.001);assert.ok(uv.getY(i)>=-.001&&uv.getY(i)<=1.001);}
  const piece=door.pieces[0];door.removePiece(piece,new THREE.Vector3(0,0,-1));assert.ok(door.broken.has(piece.id));assert.ok(door.mesh.geometry.index.array.slice(piece.start,piece.start+piece.count).every(i=>i===0));
  for(const art of map.artMounts)assert.ok(Math.abs(art.y-art.wall.base-1.65)<.001,'prints share a deliberate eye line');
+});
+
+test('door joinery UVs stay anchored after repeated bullet punctures; wall tiling stays unchanged',()=>{
+ for(const door of [true,false]){
+  const {map,panel}=panelFixture(door?'wood':'plaster',door);map.emitPanelDebris=()=>{};
+  const check=()=>{const {position,uv}=panel.mesh.geometry.attributes;for(let i=0;i<position.count;i++){
+   assert.ok(Math.abs(uv.getX(i)-position.getX(i)/(door?panel.width:2))<.000001);
+   assert.ok(Math.abs(uv.getY(i)-position.getY(i)/(door?panel.height:2))<.000001);
+  }};
+  check();
+  for(const x of [.7,1.1]){const point=panel.mesh.localToWorld(new THREE.Vector3(x,1.3,panel.thickness/2));assert.equal(puncturePanel(panel,point,new THREE.Vector3(0,0,-1),1500),true);check();}
+  assert.equal(panel.punctures,2);
+ }
 });
