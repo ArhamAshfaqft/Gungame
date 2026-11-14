@@ -1,3 +1,4 @@
+import {paintingMaterial} from './VillaArtwork.js';
 import * as THREE from 'three';
 import {alignedOpenings,partitionJunctions} from './WallLayout.js';
 import {RoundedBoxGeometry} from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
@@ -288,17 +289,12 @@ export class VillaMap{
   }
  }
  paintArtwork(x,y,z,w,h,front){
-  const frame=this.box(x,y,z,w+.1,h+.1,.045,'metal',false,true);frame.name='Framed landscape print';
+  const frame=this.box(x,y,z,w+.1,h+.1,.045,'metal',false,true);frame.name='Framed oil painting';
   frame.userData.wallAttachment=[V(x-w*.35,y,z),V(x+w*.35,y,z)];
   if(typeof document==='undefined')return;
-  const canvas=document.createElement('canvas');canvas.width=768;canvas.height=512;const c=canvas.getContext('2d');
-  c.fillStyle='#e9e1cf';c.fillRect(0,0,768,512);
-  const palettes=[['#c4c9bd','#8b9b91','#4e6868','#b99a6e'],['#d6c7ac','#b4aa8e','#6c7e75','#5b6968'],['#c3ced0','#99afb0','#647e80','#c4ac87']];
-  const palette=palettes[Math.abs(Math.round(x*3+y+z))%palettes.length];
-  c.save();c.beginPath();c.rect(40,40,688,432);c.clip();c.fillStyle=palette[0];c.fillRect(40,40,688,432);
-  for(let layer=1;layer<4;layer++){c.fillStyle=palette[layer];c.beginPath();c.moveTo(40,512);for(let px=40;px<=740;px+=8)c.lineTo(px,155+layer*65+Math.sin(px*.007+layer*2+x)*40+Math.sin(px*.019+z)*12);c.lineTo(740,512);c.closePath();c.fill();}
-  c.restore();const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=4;
-  const mat=new THREE.MeshStandardMaterial({map:texture,roughness:.96,side:THREE.DoubleSide});const picture=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mat);
+  const index=(this.artMounts.length-1)%4;
+  const mat=paintingMaterial(this,index,w,h),picture=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mat);
+  picture.name='Original oil painting';
   picture.position.set(0,0,front*.027);picture.rotation.y=front<0?Math.PI:0;frame.add(picture);
  }
 
