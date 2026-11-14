@@ -249,6 +249,7 @@ test('authored walls keep one paint across fracture sections and doors retain br
  for(const panel of map.panels){const key=panel.mesh.userData.wallFinishKey;if(!key)continue;if(finishes.has(key))assert.equal(panel.mesh.material,finishes.get(key),'continuous wall must not change paint between cells');else finishes.set(key,panel.mesh.material);}
  assert.ok(finishes.size>10);
  const door=map.panels.find(p=>p.isDoor&&p.kind==='wood');assert.equal(door.mesh.material,map.materials.doorLeaf);
+ const doors=map.panels.filter(p=>p.isDoor&&p.kind==='wood');for(const p of doors){assert.equal(p.handle.children.length,0,'hardware stays one draw per door');assert.equal(p.handle.geometry,door.handle.geometry,'hardware reuses cached geometry');}
  const uv=door.mesh.geometry.attributes.uv;for(let i=0;i<uv.count;i++){assert.ok(uv.getX(i)>=-.001&&uv.getX(i)<=1.001);assert.ok(uv.getY(i)>=-.001&&uv.getY(i)<=1.001);}
  const piece=door.pieces[0];door.removePiece(piece,new THREE.Vector3(0,0,-1));assert.ok(door.broken.has(piece.id));assert.ok(door.mesh.geometry.index.array.slice(piece.start,piece.start+piece.count).every(i=>i===0));
  for(const art of map.artMounts)assert.ok(Math.abs(art.y-art.wall.base-1.65)<.001,'prints share a deliberate eye line');

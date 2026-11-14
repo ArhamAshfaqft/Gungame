@@ -1,3 +1,4 @@
+import {mergeGeometries} from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import * as THREE from 'three';
 import {createFracturedPanel,timberCells} from './FractureGeometry.js';
 import {soundEngine} from '../audio/SoundEngine.js';
@@ -34,15 +35,20 @@ export class VillaPanel {
   for(const piece of this.pieces){const b=piece.bounds;const box=new THREE.Box3(new THREE.Vector3(b.min.x,b.min.y,-(this.thickness/2)),new THREE.Vector3(b.max.x,b.max.y,this.thickness/2)).applyMatrix4(this.mesh.matrixWorld);box.villaPanel=this;box.pieceId=piece.id;this.boxes.set(piece.id,box);}
   this.collisionBoxes=[];this.refreshCollision();
   if(door){const handle=new THREE.Mesh(new THREE.BoxGeometry(.15,.035,.055),map.materials.metal);handle.position.set(width-.17,1.05,.09);this.group.add(handle);this.handle=handle;
-   // Hardware is visual only and follows the existing supported handle.
-   if(map.materials.doorHardware){handle.material=map.materials.doorHardware;
-    for(const side of [-1,1]){
-     const plate=new THREE.Mesh(new THREE.CylinderGeometry(.043,.043,.014,12),handle.material);plate.rotation.x=Math.PI/2;plate.position.set(-.045,0,side*.045-.09);handle.add(plate);
-     if(side<0){const back=new THREE.Mesh(handle.geometry,handle.material);back.position.z=-.18;handle.add(back);}
-     const key=new THREE.Mesh(new THREE.CylinderGeometry(.017,.017,.012,10),handle.material);key.rotation.x=Math.PI/2;key.position.set(-.045,-.12,side*.044-.09);handle.add(key);
+   // One cached mesh per handle: details must not add a draw per component.
+   if(map.materials.doorHardware){
+    if(!map.doorHandleGeometry){
+     const parts=[new THREE.BoxGeometry(.15,.035,.055),new THREE.BoxGeometry(.15,.035,.055).translate(0,0,-.18)];
+     for(const side of [-1,1]){
+      parts.push(new THREE.CylinderGeometry(.043,.043,.014,12).rotateX(Math.PI/2).translate(-.045,0,side*.045-.09));
+      parts.push(new THREE.CylinderGeometry(.017,.017,.012,10).rotateX(Math.PI/2).translate(-.045,-.12,side*.044-.09));
+     }
+     map.doorHandleGeometry=mergeGeometries(parts,false);for(const geometry of parts)geometry.dispose();
     }
+    handle.geometry.dispose();handle.geometry=map.doorHandleGeometry;handle.material=map.materials.doorHardware;
    }
-}
+  }
+
   map.panels.push(this);
  }
  syncHandle(){
