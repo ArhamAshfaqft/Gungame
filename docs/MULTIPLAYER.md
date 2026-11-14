@@ -1,3 +1,25 @@
+# Browser host and join
+
+The website now defaults to browser-hosted private matches. Open Private multiplayer,
+choose a side and create a room. Copy the invite link to friends; they choose a side,
+join and enter the match. Everyone uses the website. No launcher or Oracle server
+is required. The host runs the existing authoritative GameWorld in a Web Worker.
+The host must keep the tab open and active; closing it ends the match. No host migration.
+
+PeerJS Cloud introduces peers; WebRTC carries game data. Connectivity depends on
+signaling and ICE/relay availability. Two browser profiles on one PC are verified;
+this is not proof that every pair of internet networks will connect. Configure a
+managed TURN service before promising reliable connectivity on restrictive networks.
+Passwords are checked by the host. Hosts are trusted. Four total connections,
+including spectators. Balance-host-latency is currently only supported by the legacy server.
+
+Browser check: `node scripts/check-browser-multiplayer.mjs` (Vite on 127.0.0.1:5192).
+Checks join, rig loading, movement, shot acknowledgement/ammunition, invite and host closure.
+It does not verify a kill through the training map's intervening cover.
+
+The old dedicated/LAN server is retained at `?multiplayer=1&transport=server`.
+The following instructions apply to that legacy mode only.
+
 # Private multiplayer alpha
 
 No Colyseus Cloud account, subscription, payment card or paid server is needed.
