@@ -1,3 +1,4 @@
+import {applyBookFinish} from './BookFinish.js';
 import * as THREE from 'three';
 import {ConvexHull} from 'three/examples/jsm/math/ConvexHull.js';
 const EPS=1e-6;
@@ -61,6 +62,7 @@ export function projectileChannel(point,direction,thickness,energy){
 // New cut faces inherit the source part's base tint (e.g. exposed cabinet wood).
 // Geometry workers carry colour attributes already, so this works on both paths.
 export function inheritSurfaceColor(source,target){
+ if(source.parameters?.bookFinish){target.parameters={...source.parameters};return applyBookFinish(target,source.parameters.bookFinish);}
  const scale=source.parameters?.surfaceUvScale;
  if(scale){
   target.parameters={...source.parameters};const p=target.attributes.position,n=target.attributes.normal,uv=target.attributes.uv;

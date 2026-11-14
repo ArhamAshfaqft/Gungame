@@ -1,3 +1,5 @@
+import {MotionBatch} from '../src/environment/MotionBatch.js';
+import {operation,packOperation,computeOperation,applyOperation} from '../src/environment/GeometryJobs.js';
 import {punctureProp} from '../src/world/SurfaceGeometry.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -30,4 +32,22 @@ test('detailed props retain material damage and cups have a genuinely open rim',
  for(let i=0;i<p.count;i++)assert.ok(Math.abs(uv.getX(i)-(Math.abs(n.getX(i))>.5?p.getZ(i):p.getX(i)))<.000001);
 
 
+});
+
+test('book covers face outward and retain colour through worker damage and moving batches',()=>{
+ const map=new VillaMap(new T.Scene());let book;map.scene.traverse(o=>{if(!book&&o.name==='Bound book')book=o;});
+ const finish=book.geometry.parameters.bookFinish;assert.ok(finish);assert.notEqual(finish.coverColor,0xffffff);
+ const check=()=>{const p=book.geometry.attributes.position,n=book.geometry.attributes.normal,c=book.geometry.attributes.color,ink=new T.Color(finish.coverColor);let spine=0;
+  for(let i=0;i<p.count;i++)if(n.getZ(i)>.9&&p.getZ(i)>finish.depth*.4&&Math.abs(p.getY(i)/finish.height)<.2){assert.ok(Math.abs(c.getX(i)-ink.r)<.00001);assert.ok(Math.abs(c.getY(i)-ink.g)<.00001);spine++;}
+  assert.ok(spine);assert.ok([...c.array].some(v=>v>.1));
+ };
+ // Sample inside a spine face rather than its decorative edge bands.
+ const op=operation('chip',book,[new T.Vector3(0,0,finish.depth/2),new T.Vector3(0,0,1),.035,.02]);
+ const result=computeOperation(packOperation(op));assert.equal(result.value,true);applyOperation(op,result);check();
+ const batch=new MotionBatch(map.scene);batch.add(book);let group=[...batch.groups.values()][0],buffer=group.mesh.geometry.attributes.color;
+ assert.ok(buffer,'moving renderer must upload colour attributes');
+ const source=book.geometry.attributes.color;for(let i=0;i<source.count*3;i++)assert.equal(buffer.array[i],source.array[i]);
+ const op2=operation('chip',book,[new T.Vector3(0,finish.height*.25,finish.depth/2),new T.Vector3(0,0,1),.03,.015]);
+ applyOperation(op2,computeOperation(packOperation(op2)));batch.add(book);check();
+ group=[...batch.groups.values()][0];assert.ok([...group.mesh.geometry.attributes.color.array].some(v=>v>.1));batch.dispose();
 });

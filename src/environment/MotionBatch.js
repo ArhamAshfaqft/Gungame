@@ -16,7 +16,7 @@ export class MotionBatch {
    group={mesh,objects:new Map(),vertices:4096,indices:8192,capacity:64};this.groups.set(key,group);this.scene.add(mesh);
    mesh.raycast=(ray,hits)=>{for(const [source,entry] of group.objects)if(source.visible&&source.userData.isShootable&&ray.ray.intersectsBox(entry.bounds))source.raycast(ray,hits);};
   }
-  const {mesh}=group,geometry=new T.BufferGeometry().copy(object.geometry);geometry.deleteAttribute('color');
+  const {mesh}=group,geometry=new T.BufferGeometry().copy(object.geometry);if(!object.material.vertexColors)geometry.deleteAttribute('color');else if(!geometry.attributes.color)geometry.setAttribute('color',new T.Float32BufferAttribute(new Float32Array(geometry.attributes.position.count*3).fill(1),3));
   if(!geometry.attributes.normal)geometry.computeVertexNormals();
   if(!geometry.attributes.uv)geometry.setAttribute('uv',new T.Float32BufferAttribute(new Float32Array(geometry.attributes.position.count*2),2));
   if(!geometry.index)geometry.setIndex(Array.from({length:geometry.attributes.position.count},(_,i)=>i));

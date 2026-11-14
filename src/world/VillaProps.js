@@ -6,7 +6,7 @@ const colorGeometry=(g,color)=>{const c=new T.Color(color),a=new Float32Array(g.
 function merge(parts){const g=mergeGeometries(parts,false);for(const p of parts)p.dispose();return g;}
 function box(w,h,d,x,y,z,color){return colorGeometry(new T.BoxGeometry(w,h,d).translate(x,y,z),color);}
 function lathe(profile,r,h,segments=12){return new T.LatheGeometry(profile.map(([x,y])=>new T.Vector2(x*r,(y-.5)*h)),segments);}
-function replace(mesh,geometry){const old=mesh.geometry;if(old.type==='BoxGeometry'){geometry.type='BoxGeometry';geometry.parameters={...old.parameters};}old.dispose();mesh.geometry=geometry;geometry.computeBoundingBox();geometry.computeBoundingSphere();}
+function replace(mesh,geometry){const old=mesh.geometry;if(old.type==='BoxGeometry'){geometry.type='BoxGeometry';geometry.parameters={...geometry.parameters,...old.parameters};}old.dispose();mesh.geometry=geometry;geometry.computeBoundingBox();geometry.computeBoundingSphere();}
 function furnitureUV(g){g.parameters??={};g.parameters.surfaceUvScale=1;const p=g.attributes.position,n=g.attributes.normal,uv=g.attributes.uv;for(let i=0;i<p.count;i++)uv.setXY(i,Math.abs(n.getX(i))>.5?p.getZ(i):p.getX(i),Math.abs(n.getY(i))>.5?p.getZ(i):p.getY(i));}
 function chamferBox(w,h,d,r){
  const shape=new T.Shape(),points=[[-w/2+r,-h/2],[w/2-r,-h/2],[w/2,-h/2+r],[w/2,h/2-r],[w/2-r,h/2],[-w/2+r,h/2],[-w/2,h/2-r],[-w/2,-h/2+r]];
@@ -14,9 +14,12 @@ function chamferBox(w,h,d,r){
  const g=new T.ExtrudeGeometry(shape,{depth:d,bevelEnabled:false,steps:1});g.translate(0,0,-d/2);return g;
 }
 function bookGeometry(w,h,d,color){
- const pages=box(w*.78,h*.94,d*.94,0,0,.01*d,0xd5ccb5),n=pages.attributes.normal,c=pages.attributes.color,ink=new T.Color(color);
- for(let i=0;i<n.count;i++)if(n.getZ(i)<-.9)c.setXYZ(i,ink.r,ink.g,ink.b);
- return merge([pages,colorGeometry(new T.PlaneGeometry(d,h).rotateY(-Math.PI/2).translate(-w/2,0,0),color),colorGeometry(new T.PlaneGeometry(d,h).rotateY(Math.PI/2).translate(w/2,0,0),color)]);
+ const parts=[box(w*.78,h*.94,d*.88,0,0,-d*.02,0xd5ccb5),
+  colorGeometry(new T.PlaneGeometry(d,h).rotateY(-Math.PI/2).translate(-w/2,0,0),color),
+  colorGeometry(new T.PlaneGeometry(d,h).rotateY(Math.PI/2).translate(w/2,0,0),color)];
+ const levels=[-.5,-.36,-.34,.28,.30,.5];
+ for(let i=0;i<levels.length-1;i++)parts.push(colorGeometry(new T.PlaneGeometry(w,(levels[i+1]-levels[i])*h).translate(0,(levels[i+1]+levels[i])*h/2,d/2),i===1||i===3?0xad9768:color));
+ const geometry=merge(parts);geometry.parameters={bookFinish:{width:w,height:h,depth:d,coverColor:new T.Color(color).getHex()}};return geometry;
 }
 function storageGeometry(w,h,d,color){
  const turn=d>w,ww=turn?d:w,dd=turn?w:d;
@@ -63,7 +66,8 @@ export function polishVillaProps(map){
    mesh.material=m.monitorDisplay;mesh.name='Monitor display';continue;
   }
   if(name==='Bound book'){
-   replace(mesh,bookGeometry(p.width,p.height,p.depth,mesh.material.color));mesh.material=m.propModel;continue;
+   const palette=[0x763c35,0x304952,0x68715a,0xa27b43,0x4b4855,0x465b4b,0x8c6550,0xc5b795],index=Math.abs(Math.round(mesh.position.x*731+mesh.position.y*379+mesh.position.z*151))%palette.length;
+   replace(mesh,bookGeometry(p.width,p.height,p.depth,palette[index]));mesh.material=m.propModel;continue;
   }
   if(name==='Cabinet door'||name.startsWith('Cabinet ')||name.startsWith('Bookshelf ')){
    const parent=mesh.parent,white=mesh.material===m.white,metal=mesh.userData.physicalMaterial==='metal';
