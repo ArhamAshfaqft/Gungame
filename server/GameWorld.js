@@ -1,3 +1,5 @@
+import {footstepSurface} from '../src/multiplayer/Footsteps.js';
+import {resolvePlayerContacts} from '../src/multiplayer/PlayerContacts.js';
 import {chooseSide} from '../src/multiplayer/TeamSelection.js';
 import {teamSpawn} from '../src/multiplayer/TeamSpawns.js';
 import * as T from 'three';
@@ -32,7 +34,7 @@ export class GameWorld{
  respawn(p){
   const m=p.movement,{position:spawn,yaw}=teamSpawn(this.mapId,p.team,this.players.values(),p);
   m.resetInput();m.position.set(spawn[0],spawn[1]+m.standHeight,spawn[2]);m.velocity.set(0,0,0);m.yaw=yaw;m.pitch=0;m.isGrounded=true;m.isDisabled=false;m.isCrouching=false;m.currentHeight=m.standHeight;m.update(0,this.map.colliders,this.map.jumpPads);
-  p.hp=100;p.ammo=createAmmoStores();p.counts={frag:2,flash:2,smoke:2};p.reload=null;p.pin=null;p.respawnAt=0;p.queue=[];p.ack=p.lastSeq;
+  p.hp=100;p.ammo=createAmmoStores();p.counts={frag:2,flash:2,smoke:2};p.reload=null;p.pin=null;p.queuedThrow=null;p.respawnAt=0;p.queue=[];p.ack=p.lastSeq;
  }
  enqueue(p,inputs){for(const data of inputs){if(data.seq<=p.lastSeq||data.seq>p.lastSeq+600)continue;p.lastSeq=data.seq;p.queue.push(data);}if(p.queue.length>12)p.queue.splice(0,p.queue.length-12);p.lastInputTime=this.time;}
  action(p,data){
@@ -47,11 +49,18 @@ export class GameWorld{
    if(!GRENADES[data.type]||p.pin||p.counts[data.type]<=0)return;p.reload=null;p.counts[data.type]--;p.pin={type:data.type,time:this.time};return;
   }
   if(data.kind==='throw'){
-   if(!p.pin||this.time-p.pin.time<.3)return;
+   if(!p.pin)return;
+   if(this.time-p.pin.time<.3){p.queuedThrow=data.mode==='low'?'low':'high';return;}
    this.launch(p,data.mode==='low'?'low':'high');return;
   }
   if(data.kind==='door'){
-   this.room.interact(p.movement.position);return;
+   if(this.time-(p.lastDoorTime??-Infinity)<.18)return;
+   if(typeof data.target==='string'){
+    const door=this.sync.meshes.get(data.target)?.userData.breakable;
+    if(!door?.isDoor||door.destroyed||door.detachedEnvironment||door.group.localToWorld(new T.Vector3(door.width/2,1,0)).distanceTo(p.movement.position)>2.6)return;
+    if(typeof data.open==='boolean'&&door.open===data.open)return;
+    door.toggle(p.movement.position);p.lastDoorTime=this.time;
+   }else{this.room.interact(p.movement.position);p.lastDoorTime=this.time;}return;
   }
   if(data.kind==='fire'){
    if(!WEAPONS[data.slot]||p.reload||p.pin||this.time+.018<p.nextFire||p.ammo[data.slot].ammo<=0)return;
@@ -93,7 +102,7 @@ export class GameWorld{
  damage(p,amount,attacker,cause={}){if(p.hp<=0)return;const before=p.hp;p.hp=Math.max(0,p.hp-amount);p.damageSeq++;this.emit('damaged',{id:p.id,seq:p.damageSeq,hp:p.hp,amount:before-p.hp,by:attacker?.id||null,source:attacker?.movement.position.toArray()||null,slot:cause.slot||null});if(!p.hp){p.deaths++;p.respawnAt=this.time+3;p.reload=null;p.movement.isDisabled=true;p.movement.resetInput();if(attacker&&attacker!==p&&attacker.team!==p.team){attacker.kills++;this.teamScores[attacker.team]++;}this.emit('eliminated',{id:p.id,name:p.name,by:attacker?.id||null,byName:attacker?.name||'Environment',slot:cause.slot||null,headshot:!!cause.headshot});}}
  launch(p,mode){
   const proxy={camera:p.camera,movement:p.movement,colliders:this.map.colliders};const {position,velocity}=Throwables.prototype.launchParameters.call(proxy,mode);
-  const projectile={id:String(this.nextGrenade++),owner:p.id,type:p.pin.type,position,velocity,age:this.time-p.pin.time,mesh:new T.Object3D(),bounceCooldown:0,resting:false};this.projectiles.push(projectile);p.pin=null;
+  const projectile={id:String(this.nextGrenade++),owner:p.id,type:p.pin.type,position,velocity,age:this.time-p.pin.time,mesh:new T.Object3D(),bounceCooldown:0,resting:false};this.projectiles.push(projectile);p.pin=null;p.queuedThrow=null;
  }
  detonate(type,position,owner){
   if(type==='frag'){
@@ -113,14 +122,23 @@ export class GameWorld{
    if(p.spectator)continue;
    const m=p.movement;if(p.hp<=0){if(this.time>=p.respawnAt)this.respawn(p);continue;}
    const input=p.queue.shift();if(input){applyInput(m,input);if(p.slot!==input.slot)p.reload=null;p.slot=input.slot;p.ack=input.seq;}else if(this.time-p.lastInputTime>.15)for(const key of Object.keys(m.keys))m.keys[key]=false;
-   m.isReloading=!!p.reload;m.update(STEP,this.map.colliders,this.map.jumpPads);
+   const oldX=m.position.x,oldZ=m.position.z;
+   m.isReloading=!!p.reload;m.update(STEP,this.map.colliders,this.map.jumpPads);resolvePlayerContacts(m,this.players.values(),p.id,this.map.colliders);
+   const travelled=Math.hypot(m.position.x-oldX,m.position.z-oldZ);
+   if(m.isGrounded&&!m.isSliding&&travelled>.001&&travelled<1){
+    p.footDistance=(p.footDistance||0)+travelled;
+    if(p.footDistance>=(m.isSprinting?1.7:m.isWalking||m.isCrouching?1.15:1.45)){
+     p.footDistance=0;p.footCount=(p.footCount||0)+1;this.emit('footstep',{id:p.id,position:[m.position.x,m.position.y-m.currentHeight,m.position.z],kind:m.isCrouchRunning?'crouchRun':m.isCrouching?'crouch':m.isWalking?'walk':m.isSprinting?'sprint':'run',surface:footstepSurface(this.map,m),side:p.footCount%2?'Left':'Right'});
+    }
+   }else if(!m.isGrounded||travelled>=1)p.footDistance=0;
    if(p.reload&&this.time>=p.reload.end){const a=p.ammo[p.reload.slot],needed=Math.min(WEAPONS[p.reload.slot].magazine-a.ammo,a.reserve);a.ammo+=needed;a.reserve-=needed;p.reload=null;}
+   if(p.pin&&p.queuedThrow&&this.time-p.pin.time>=.3)this.launch(p,p.queuedThrow);
    if(p.pin&&this.time-p.pin.time>=6){const type=p.pin.type;p.pin=null;this.detonate(type,m.position.clone().add(new T.Vector3(0,-.25,0)),p.id);}
   }
   const contacts=[...this.players.values()].filter(p=>p.hp>0).map(p=>({position:p.movement.position,height:p.movement.currentHeight,speed:p.movement.getSpeed()}));
   this.room.update(STEP,contacts[0]?.position||new T.Vector3(100,1.65,100),{height:contacts[0]?.height||1.65,speed:contacts[0]?.speed||0,players:contacts});this.smokes=this.smokes.filter(s=>this.time-s.started<14);
   for(const projectile of [...this.projectiles]){projectile.age+=STEP;projectile.bounceCooldown-=STEP;if(!projectile.resting)Throwables.prototype.integrate.call({colliders:this.map.colliders,room:this.room,bounceSound(){}},projectile,STEP);if(projectile.age>=6){this.projectiles.splice(this.projectiles.indexOf(projectile),1);this.detonate(projectile.type,projectile.position,projectile.owner);}}
  }
- snapshot(){return{time:this.time,scores:this.teamScores,smokes:this.smokes,players:[...this.players.values()].map(p=>({id:p.id,name:p.name,team:p.team,spectator:p.spectator,damageSeq:p.damageSeq,respawnRemaining:!p.spectator&&p.hp<=0?Math.max(0,p.respawnAt-this.time):0,hp:p.hp,kills:p.kills,deaths:p.deaths,ack:p.ack,actionAck:p.actionAck,movement:movementState(p.movement),slot:p.slot,ammo:p.ammo,counts:p.counts,reload:p.reload?{slot:p.reload.slot,remaining:Math.max(0,p.reload.end-this.time),duration:WEAPONS[p.reload.slot].reloadTime}:null,firing:p.fireUntil>this.time,grenade:p.pin?.type||null})),grenades:this.projectiles.map(p=>({id:p.id,type:p.type,position:p.position.toArray()}))};}
+ snapshot(){return{time:this.time,scores:this.teamScores,smokes:this.smokes,players:[...this.players.values()].map(p=>({id:p.id,name:p.name,team:p.team,spectator:p.spectator,damageSeq:p.damageSeq,respawnRemaining:!p.spectator&&p.hp<=0?Math.max(0,p.respawnAt-this.time):0,hp:p.hp,kills:p.kills,deaths:p.deaths,ack:p.ack,actionAck:p.actionAck,movement:movementState(p.movement),slot:p.slot,ammo:p.ammo,counts:p.counts,reload:p.reload?{slot:p.reload.slot,remaining:Math.max(0,p.reload.end-this.time),duration:WEAPONS[p.reload.slot].reloadTime}:null,firing:p.fireUntil>this.time,grenade:p.pin?.type||null,grenadeAge:p.pin?this.time-p.pin.time:null})),grenades:this.projectiles.map(p=>({id:p.id,type:p.type,position:p.position.toArray()}))};}
  dispose(){this.room.destruction?.dispose();this.scene.traverse(o=>{o.geometry?.dispose();for(const m of Array.isArray(o.material)?o.material:o.material?[o.material]:[])m.dispose();});this.players.clear();}
 }

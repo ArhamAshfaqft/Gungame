@@ -1,3 +1,4 @@
+import {resolvePlayerContacts} from './PlayerContacts.js';
 import {connectBrowserRoom} from './BrowserRoom.js';
 import {DamageFeedback} from './DamageFeedback.js';
 import {SpectatorView} from './SpectatorView.js';
@@ -37,6 +38,7 @@ export class NetworkSession{
   room.onMessage('snapshot',data=>this.snapshot(data));
   room.onMessage('liquid',data=>applyLiquidState(this.game.arena.liquids,data));
   room.onMessage('shot',data=>this.shot(data));
+  room.onMessage('footstep',data=>{if(data.id!==this.id)soundEngine.playRemoteFootstep(data);});
   room.onMessage('detonate',data=>{if(data.type==='smoke'){const eq=this.game.equipment;if(data.owner===this.id&&eq.held?.armed)eq.stow(true);soundEngine.playUtility('smoke',new T.Vector3().fromArray(data.position));return;}const eq=this.game.equipment;if(data.owner===this.id&&eq.held?.armed)eq.stow(true);eq.networkReceiving=true;try{eq.detonate(data.type,new T.Vector3().fromArray(data.position));}finally{eq.networkReceiving=false;}});
   room.onMessage('damaged',data=>{if(data.id===this.id)this.damageFeedback.hit(data);});
   room.onMessage('eliminated',data=>{const roster=this.lastSnapshot?.players||[];const victim=data.name||roster.find(p=>p.id===data.id)?.name||'Opponent',killer=data.byName||roster.find(p=>p.id===data.by)?.name||'Environment';this.game.hud.addKillFeedEntry(victim,!!data.headshot,data.slot,killer);});
@@ -49,7 +51,7 @@ export class NetworkSession{
   for(const floor of g.arena.timberFloors||[])floor.update=()=>{};
   for(const panel of g.arena.panels||[])panel.update=()=>{};
   if(g.arena.id!=='villa'){g.room.update=(_dt,position)=>{g.room.canInteract=!g.room.door.destroyed&&position.distanceTo(g.room.doorMesh.getWorldPosition(new T.Vector3()))<2.3;};}
-  if(g.room.interact){g.room.interact=()=>{this.action({kind:'door'});return true;};}
+  if(g.room.interact){g.room.interact=()=>{const door=g.room.activeDoor||g.room.door;this.action({kind:'door',target:door?.mesh?.userData.netWorldId,open:!door?.open});return true;};}
   window.addEventListener('keydown',e=>{if(this.active&&['KeyP','KeyB','KeyH'].includes(e.code)){e.preventDefault();e.stopImmediatePropagation();}},true);
   window.addEventListener('pagehide',()=>room.leave(),{once:true});
   document.addEventListener('visibilitychange',()=>{if(document.hidden&&this.connected){g.movement.resetInput();g.weapon.triggerHeld=false;this.accumulator=0;this.presentation?.reset(g.movement.position);}});
@@ -72,12 +74,12 @@ export class NetworkSession{
   this.materialSounds.set(effect.id,now);playMaterialEffect(effect);
   if(effect.kind==='glassBreak')this.game.surfaceDamage.emit('glass',new T.Vector3().fromArray(effect.position),new T.Vector3(0,1,0),14,.025);
  }
- pin(type){this.action({kind:'pin',type});}
+ pin(type){this.action({kind:'pin',type});this.grenadePinSeq=this.actionSeq;}
  spawn(type,mode){this.action({kind:'throw',type,mode});const mesh=createGrenadeModel(type);return{type,mesh,position:mesh.position,velocity:new T.Vector3(),age:0};}
  step(delta){
   if(!this.connected||!this.own||this.own.spectator||this.own.hp<=0)return;const g=this.game,m=g.movement;this.accumulator=Math.min(this.accumulator+delta,.1);
   this.presentation??=new PredictionCamera(m.camera);this.presentation.restore();
-  while(this.accumulator>=STEP){this.accumulator-=STEP;const input=readInput(m,g.weapon,++this.seq);if(!m.isDisabled)m.update(STEP,g.arena.colliders,g.arena.jumpPads);this.presentation.tick(m.position);this.pending.push({input,state:movementState(m)});this.batch.push(input);if(this.pending.length>180)this.pending.shift();}
+  while(this.accumulator>=STEP){this.accumulator-=STEP;const input=readInput(m,g.weapon,++this.seq);if(!m.isDisabled)m.update(STEP,g.arena.colliders,g.arena.jumpPads);resolvePlayerContacts(m,this.lastSnapshot?.players||[],this.id,g.arena.colliders);this.presentation.tick(m.position);this.pending.push({input,state:movementState(m)});this.batch.push(input);if(this.pending.length>180)this.pending.shift();}
   this.presentation.render(this.accumulator/STEP,m);
   if(this.batch.length>=2){this.room.send('input',this.batch.splice(0,6));}
  }
@@ -98,7 +100,7 @@ export class NetworkSession{
    this.presentation?.restore();
    const yaw=m.yaw,pitch=m.pitch,liveKeys={...m.keys},crouching=m.isCrouching;restoreMovement(m,p.movement);
    const remaining=this.pending.filter(c=>c.input.seq>p.ack);
-   if(!dead&&remaining.length<=30)for(const c of remaining){applyInput(m,c.input);m.update(STEP,g.arena.colliders,g.arena.jumpPads);c.state=movementState(m);}
+   if(!dead&&remaining.length<=30)for(const c of remaining){applyInput(m,c.input);m.update(STEP,g.arena.colliders,g.arena.jumpPads);resolvePlayerContacts(m,this.lastSnapshot?.players||[],this.id,g.arena.colliders);c.state=movementState(m);}
    if(previous){m.yaw=yaw;m.pitch=pitch;Object.assign(m.keys,liveKeys);m.isCrouching=crouching;}m.update(0,g.arena.colliders,g.arena.jumpPads);
    if(this.wasDead!==dead)this.presentation?.reset(m.position);else this.presentation?.correct(m.position);
   }
@@ -106,6 +108,7 @@ export class NetworkSession{
   if(previous&&p.hp<previous.hp&&p.damageSeq>this.damageFeedback.seq)this.damageFeedback.hit({seq:p.damageSeq,hp:p.hp,amount:previous.hp-p.hp});
   this.damageFeedback.sync(p.hp,p.spectator);
   if(!this.wasDead&&dead){m.resetInput();w.cancelReload();eq.stow(true);soundEngine.stopWeaponSounds();this.pending=[];this.batch=[];}
+  if(eq.held?.armed&&this.grenadePinSeq&&p.actionAck>=this.grenadePinSeq){if(p.grenade===eq.held.type&&Number.isFinite(p.grenadeAge))eq.held.age=p.grenadeAge;else if(!eq.pending)eq.stow(true);}
   eq.playerHealth=p.hp;eq.respawnTimer=0;eq.counts={...p.counts};this.wasDead=dead;
   if(dead){w.triggerHeld=false;w.isAiming=false;}
   if(p.actionAck>=this.actionSeq){for(const [slot,store] of Object.entries(p.ammo)){w.ammoStores[slot].ammo=store.ammo;w.ammoStores[slot].reserve=store.reserve;}

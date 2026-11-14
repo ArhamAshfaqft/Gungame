@@ -1,0 +1,30 @@
+import {Server} from '@colyseus/core';
+import {WebSocketTransport} from '@colyseus/ws-transport';
+import {chromium} from 'playwright';
+import * as T from 'three';
+import assert from 'node:assert/strict';
+import {PrivateRoom} from '../server/PrivateRoom.js';
+const transport=new WebSocketTransport(),server=new Server({transport,gracefullyShutdown:false});server.define('private',PrivateRoom);await server.listen(0,'127.0.0.1');const address='http://127.0.0.1:'+transport.server.address().port;
+const browser=await chromium.launch({channel:'chrome',headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});const pages=[],errors=[];
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+async function focus(page){await page.bringToFront();await page.evaluate(()=>document.exitPointerLock());await wait(80);await page.locator('#btn-play').click();}
+try{
+ for(let i=0;i<2;i++){const context=await browser.newContext({viewport:{width:1200,height:800}}),page=await context.newPage();pages.push(page);page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:5194/?map=villa&multiplayer=1&transport=server');await page.waitForFunction(()=>window.__fastSnipe&&!window.__fastSnipe.graphicsWarming,{timeout:90000});await page.locator('#mp-name').fill(i?'Guest':'Host');await page.locator('#mp-side').selectOption(i?'blue':'red');await page.locator('#mp-address').fill(address);}
+ await pages[0].locator('#mp-create').click();await pages[0].waitForFunction(()=>window.__fastSnipe.multiplayer?.connected);const code=await pages[0].evaluate(()=>window.__fastSnipe.multiplayer.code);await pages[1].locator('#mp-code').fill(code);await pages[1].locator('#mp-join').click();await pages[1].waitForFunction(()=>window.__fastSnipe.multiplayer?.connected);
+ const room=PrivateRoom.active,world=room.world,footEvents=[];const emit=world.emit;world.emit=(type,data)=>{if(type==='footstep')footEvents.push(data);emit(type,data);};const players=[...world.players.values()].sort((a,b)=>a.name==='Host'?-1:1);
+ function place(p,pos){p.queue=[];p.movement.resetInput();p.movement.position.fromArray(pos);p.movement.velocity.set(0,0,0);p.movement.update(0,world.map.colliders);}
+ for(const page of pages){await page.locator('#btn-play').click();await page.evaluate(async()=>{const moduleUrl=performance.getEntriesByType('resource').find(e=>e.name.includes('/src/audio/SoundEngine.js'))?.name||'/src/audio/SoundEngine.js';const {soundEngine}=await import(moduleUrl);window.__remoteSteps=[];window.__wireSteps=[];window.__fastSnipe.multiplayer.room.onMessage('footstep',data=>window.__wireSteps.push(data));soundEngine.playRemoteFootstep=data=>window.__remoteSteps.push(data);});}
+ place(players[0],[0,1.65,28]);place(players[1],[0,1.65,25]);await wait(450);for(const page of pages)await page.evaluate(()=>{window.__fastSnipe.movement.yaw=0;});
+ await focus(pages[0]);await pages[0].keyboard.down('KeyW');await wait(1200);await pages[0].keyboard.up('KeyW');await wait(250);const a=players[0].movement.position,b=players[1].movement.position;assert.ok(a.z>b.z+.88,'players cannot pass through one another');const collisionDistance=a.distanceTo(b);assert.ok(await pages[1].evaluate(()=>window.__remoteSteps.length)>0,'guest receives host footstep events');
+ const door=world.map.panels.find(p=>p.isDoor&&Math.abs(p.group.position.x+2.7)<.01&&Math.abs(p.group.position.y-6.8)<.01&&p.group.position.z>5),id=door.mesh.userData.netWorldId,center=door.group.localToWorld(new T.Vector3(door.width/2,1,0));
+ place(players[0],[-1.65,8.45,center.z]);place(players[1],[-3.75,8.45,center.z]);await wait(500);
+ for(const page of pages)await page.evaluate(()=>{window.__heights=[];const m=window.__fastSnipe.movement,fn=m.update;m.update=function(...args){const r=fn.apply(this,args);window.__heights.push(m.position.y);return r;};});
+ await focus(pages[0]);await pages[0].keyboard.down('KeyF');await wait(300);await pages[0].keyboard.down('KeyF');await wait(250);await pages[0].keyboard.up('KeyF');assert.equal(door.open,true,'key-repeat must not toggle the door twice');
+ for(let i=0;i<6;i++){const page=pages[i%2];await focus(page);await page.keyboard.press('KeyF');await wait(250);for(const other of pages){const state=await other.evaluate(id=>window.__fastSnipe.networkWorld.meshes.get(id).userData.breakable.open,id);assert.equal(state,door.open,'both clients agree on targeted door state');}}
+ for(const page of pages){const heights=await page.evaluate(()=>window.__heights);assert.ok(heights.every(y=>y<8.65&&y>8),'doors must not lift or drop the player to another storey');}
+ for(const piece of door.pieces){if(door.broken.has(piece.id))continue;const point=door.mesh.localToWorld(new T.Vector3(piece.center.x,piece.center.y,door.thickness/2));door.takeBulletHit({point,instanceId:piece.id},10000,new T.Vector3(0,0,-1));}
+ await wait(500);assert.ok(door.destroyed);for(const page of pages)assert.equal(await page.evaluate(id=>window.__fastSnipe.networkWorld.meshes.get(id).userData.breakable.handle.visible,id),false,'complete destruction hides the handle on both clients');
+ // The real browser utility path with extra action-message latency.
+ const guest=pages[1];await focus(guest);await guest.evaluate(()=>{const room=window.__fastSnipe.multiplayer.room,send=room.send.bind(room);room.send=(type,data)=>{if(type==='action')setTimeout(()=>send(type,data),240);else send(type,data);};const eq=window.__fastSnipe.equipment;eq.select('flash');eq.pullPin();});await wait(60);await guest.evaluate(()=>window.__fastSnipe.equipment.throwSelected('low'));await wait(1100);assert.equal(players[1].pin,null,'a delayed throw releases the server grenade');assert.ok(world.projectiles.some(p=>p.type==='flash'&&p.owner===players[1].id));
+ assert.deepEqual(errors,[]);await pages[1].screenshot({path:'E:/Cache/Temp/multiplayer-stability-proof.png'});console.log(JSON.stringify({result:'PASS',code,collisionDistance,doorReversals:6,handleHidden:true,latencyThrowMs:240,errors}));
+}finally{await browser.close();await wait(80);await server.gracefullyShutdown(false);}

@@ -441,6 +441,8 @@ export class MovementController {
 
         // Box Colliders
         for (const col of colliders) {
+            // Cull distant leaves before matrix inversions and local-space collision.
+            if(this.position.x+.45<col.min.x||this.position.x-.45>col.max.x||this.position.z+.45<col.min.z||this.position.z-.45>col.max.z)continue;
             if (this.resolveBoxCollision(col, prevY - this.currentHeight)) onGroundNow = true;
         }
 
@@ -572,7 +574,7 @@ export class MovementController {
         };
         consider(0);
         for (const box of colliders) {
-            if (box.doorGroup) continue;
+            if (box.doorGroup||box.noStep||box.supportMesh?.userData.breakable?.isDoor) continue;
             if (box.ramp) {
                 const ramp = box.ramp;
                 const local = this.position.clone().sub(ramp.position).applyAxisAngle(new THREE.Vector3(0,1,0), -ramp.rotation);
@@ -600,10 +602,12 @@ export class MovementController {
             // obstacle, never a stair tread. Multiple cells otherwise ratchet
             // the player upward as the leaf sweeps through the capsule.
             const grounded=this.resolveBoxCollision(box.doorBounds,localFeet,false);
-            this.position.copy(group.localToWorld(this.position.clone()));this.velocity.applyQuaternion(rotation);
+            this.position.copy(group.localToWorld(this.position.clone()));this.position.y=world.y;this.velocity.applyQuaternion(rotation);this.velocity.y=velocity.y;
             if(this.position.distanceToSquared(world)<1e-12)this.velocity.copy(velocity);
             return grounded;
         }
+        if(box.stairRail){const r=box.stairRail,surface=r.base+r.rise*(.5-(this.position.z-r.z)/r.length);if(this.position.y<surface-.02||this.position.y-this.currentHeight>surface+1.1)return false;}
+        allowStep=allowStep&&!box.noStep&&!box.stairGuard&&!box.supportMesh?.userData.breakable?.isDoor;
         // Player cylinder/AABB radius = 0.45
         const r = 0.45;
         const p = this.position;
@@ -640,7 +644,7 @@ export class MovementController {
         if (p.x > minX && p.x < maxX && p.z > minZ && p.z < maxZ) {
             // Step-up mechanic (if box is low like a ramp/step <= 0.5m)
             const stepUpHeight = box.max.y;
-            if (allowStep && this.velocity.y <= 0 && (previousFeet >= stepUpHeight - 0.001 ||
+            if (allowStep && stepUpHeight-previousFeet<=.55 && this.velocity.y <= 0 && (previousFeet >= stepUpHeight - 0.001 ||
                 (this.isGrounded && p.y - h >= stepUpHeight - 0.55))) {
                 p.y = stepUpHeight + h;
                 this.velocity.y = 0;

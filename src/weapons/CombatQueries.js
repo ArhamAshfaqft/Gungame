@@ -25,7 +25,7 @@ export function sweepSphere(start, end, radius, colliders, ignore = null) {
     const delta = end.clone().sub(start);
     let result = null;
     for (const box of colliders) {
-        if (ignore?.(box)) continue;
+        if (box.playerOnly||ignore?.(box)) continue;
         if(box.doorGroup){const group=box.doorGroup;group.updateWorldMatrix(true,false);const hit=sweepSphere(group.worldToLocal(start.clone()),group.worldToLocal(end.clone()),radius,[box.doorBounds]);if(hit&&(!result||hit.time<result.time)){hit.normal.transformDirection(group.matrixWorld);hit.box=box;result=hit;}continue;}
         if(box.ramp?.thickness){const hit=sweepStair(start,end,radius,box);if(hit&&(!result||hit.time<result.time))result=hit;continue;}
         let enter = 0, exit = 1, axis = -1, sign = 0, valid = true;

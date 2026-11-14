@@ -1,3 +1,47 @@
+# Multiplayer stability update (protocol 5)
+
+All players must refresh after deployment and create a fresh room. Protocol 5 rooms
+use a separate signaling prefix so clients with incompatible collision rules do not mix.
+
+- Players use horizontal capsule separation on host and predicted clients. Characters
+  do not act as platforms; spectators/dead players and different floors do not block.
+- Stair rail guards follow the slope continuously. They block player capsules while
+  leaving projectile queries unchanged. Existing floor and destruction volumes remain.
+- Door requests specify the intended leaf/state; keyboard repeat and rapid duplicate
+  toggles are suppressed. Door physics cannot use leaves or broken leaf cells as steps.
+- Handle visibility is part of the replicated door state, including late joins.
+- Grenade fuse expiry is authoritative. The client retains a live grenade until the
+  host confirms detonation or release. Throws received before pin animation maturity
+  wait for that minimum instead of silently leaving an invisible grenade in hand.
+- Remote footfalls are host-generated from actual grounded travel. Wood/stone/metal,
+  rugs and water affect timbre; walk/crouch/sprint affect loudness. Distance, heading
+  and vertical separation affect attenuation/pan. Eight concurrent remote voices max.
+- Distant collision boxes are rejected before door matrix inversion. Browser-host world
+  packets compress once per broadcast; snapshots no longer queue behind compression.
+
+## Checks and practical limits
+
+`node --test tests/multiplayer-stability.test.js` covers contacts, stacked-cell/door
+height, rail slopes, handle destruction/late join, door reversals, grenade clocks,
+footstep cadence/mixing and distant-door broad phase.
+
+With Vite on 127.0.0.1:5194, `node scripts/check-multiplayer-stability.mjs` runs an
+isolated local socket server with two Chrome clients. It checks real input-based
+player blocking, remote audio event delivery, repeated F-key handling, six alternating
+door reversals, stable upper-storey height, full door destruction and a throw with
+240 ms added outgoing action delay. `check-browser-multiplayer.mjs --villa` separately
+checks browser-host/WebRTC creation, join, world synchronization and remote rigs.
+These local checks do not guarantee every real internet network or hardware setup.
+
+A joining-client Low-quality headless Chrome sample at 1280x720 with 4x CPU throttling:
+movement processing fell from 134.8 ms to 52.6 ms over approximately 3.5 seconds;
+collision-resolution calls fell from 281,610 to 1,477. Mean full frame time in that
+sample changed from 19.69 ms to 19.04 ms. This isolates a CPU improvement, not proof
+of a solved 50 FPS limit on the reported i7-4770/RX/60 Hz PC. No fixed 50 FPS cap
+was found in the game loop; the affected PC still needs browser/runtime comparison.
+
+---
+
 # Browser host and join
 
 The website now defaults to browser-hosted private matches. Open Private multiplayer,

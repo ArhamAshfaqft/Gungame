@@ -162,7 +162,7 @@ export class Throwables {
         if (this.held?.armed) {
             this.held.age += delta; this.held.pinAge += delta;
             this.weapon.pinProgress = Math.min(1, this.held.pinAge / 0.35);
-            if (this.held.age >= 6) {
+            if (this.held.age >= 6 && !this.network) {
                 const type = this.held.type;
                 this.stow(true);
                 this.detonate(type, this.camera.position.clone().add(new THREE.Vector3(0, -0.25, 0)));

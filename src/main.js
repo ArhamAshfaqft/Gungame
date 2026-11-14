@@ -186,7 +186,7 @@ class FastSnipeGame {
 
         // Training-room door
         window.addEventListener('keydown', (event) => {
-            if (event.code === 'KeyF' && this.movement.isLocked) {
+            if (event.code === 'KeyF' && this.movement.isLocked && !event.repeat) {
                 this.room.interact(this.movement.position);
             }
             if (event.code === 'KeyV' && this.movement.isLocked && !event.repeat) { event.preventDefault(); this.toggleView(); }

@@ -1,3 +1,4 @@
+import {remoteFootstepMix} from '../multiplayer/Footsteps.js';
 // Web Audio engine: recorded boot footsteps and procedural combat effects.
 import { CombatAudio } from './CombatAudio.js';
 
@@ -66,6 +67,17 @@ class SoundEngine {
         gain.gain.setValueAtTime(kind === 'frag' ? 0.8 : kind === 'flash' ? 0.3 : kind === 'smoke' ? 0.15 : 0.08, now);
         gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
         source.connect(filter); filter.connect(gain); gain.connect(this.masterGain); source.start(now);
+    }
+
+    playRemoteFootstep(data){
+        this.ensureContext();if(!this.ctx||this.isMuted||(this.remoteFootVoices||0)>=8)return;
+        const position={x:data.position[0],y:data.position[1],z:data.position[2]},mix=remoteFootstepMix(data.kind,data.surface,position,this.combat.listener);if(mix.volume<.003)return;
+        const index=Math.floor(Math.random()*(this.footstepSamples?.length||1)),sample=this.footstepSamples?.[index],waterKeys=this.waterStepKeys||[];
+        let buffer=data.surface==='water'&&waterKeys.length?this.combat.buffers.get(waterKeys[Math.floor(Math.random()*waterKeys.length)]):sample?.buffer;
+        if(!buffer){if(!this.remoteStepNoise){this.remoteStepNoise=this.ctx.createBuffer(1,Math.ceil(this.ctx.sampleRate*.12),this.ctx.sampleRate);const a=this.remoteStepNoise.getChannelData(0);for(let i=0;i<a.length;i++)a[i]=(Math.random()*2-1)*Math.exp(-i/a.length*6);}buffer=this.remoteStepNoise;}
+        const source=this.ctx.createBufferSource(),gain=this.ctx.createGain(),filter=this.ctx.createBiquadFilter(),pan=this.ctx.createStereoPanner();source.buffer=buffer;source.playbackRate.value=.96+Math.random()*.08;gain.gain.value=mix.volume;filter.type='lowpass';filter.frequency.value=mix.frequency;pan.pan.value=mix.pan;
+        source.connect(filter);filter.connect(gain);gain.connect(pan);pan.connect(this.masterGain);this.remoteFootVoices=(this.remoteFootVoices||0)+1;
+        source.onended=()=>{this.remoteFootVoices--;source.disconnect();gain.disconnect();filter.disconnect();pan.disconnect();};source.start(this.ctx.currentTime+.1,data.surface==='water'?0:sample?.offset||0);
     }
 
     playRemoteShot(slot, position) {

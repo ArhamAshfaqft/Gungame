@@ -4,8 +4,9 @@ import {liquidState} from './LiquidSync.js';
 let world,options,code,timer,ticks=0,elapsed=0,previous=0;
 const clients=new Set(),ready=new Set();
 let outgoing=Promise.resolve();
-const send=(id,type,data)=>{outgoing=outgoing.then(async()=>{if(type==='world'){const bytes=new Uint8Array(await new Response(new Blob([JSON.stringify(data.entries)]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());data={initial:data.initial,bytes};}postMessage({id,type,data});}).catch(error=>postMessage({fatal:error.message}));};
-const broadcast=(type,data)=>{for(const id of ready)send(id,type,data);};
+const queueWorld=(ids,data)=>{outgoing=outgoing.then(async()=>{const bytes=new Uint8Array(await new Response(new Blob([JSON.stringify(data.entries)]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());for(const id of ids)postMessage({id,type:'world',data:{initial:data.initial,bytes}});}).catch(error=>postMessage({fatal:error.message}));};
+const send=(id,type,data)=>{if(type==='world')queueWorld([id],data);else postMessage({id,type,data});};
+const broadcast=(type,data)=>{if(type==='world')queueWorld([...ready],data);else for(const id of ready)send(id,type,data);};
 const packet=(entries,initial)=>({initial,entries});
 function receive({kind,id,type,data}){
  if(kind==='init'){

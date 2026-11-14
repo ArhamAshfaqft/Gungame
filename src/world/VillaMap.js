@@ -133,6 +133,11 @@ export class VillaMap{
  stairs(x,base,z,length=7,width=2.4,rise=3.4,name='Staircase'){
   for(let i=0;i<20;i++){const h=(i+1)*rise/20;this.box(x,base+h-.13,z+length/2-(i+.5)*length/20,width,.26,length/20,'stone',false,true);}
   const box=new THREE.Box3(V(x-width/2,base,z-length/2),V(x+width/2,base+rise,z+length/2));box.ramp={position:V(x,base,z),rotation:0,width,length,height:rise,thickness:.26};box.stairName=name;this.colliders.push(box);
+  // One continuous player guard per side follows the sloped tread height.
+  for(const side of [-1,1]){
+   const guard=new THREE.Box3(V(x+side*width/2-.04,base,z-length/2-.002),V(x+side*width/2+.04,base+rise+1.1,z+length/2+.002));
+   guard.stairGuard=true;guard.noStep=true;guard.playerOnly=true;guard.stairRail={base,z,length,rise};this.colliders.push(guard);
+  }
   // Slim sloping handrails and regularly spaced balusters.
   for(const side of [-1,1]){for(let i=0;i<=10;i++){const zz=z+length/2-i*length/10,yy=base+i*rise/10;this.box(x+side*(width/2-.05),yy+.5,zz,.04,1,.04,'metal',false,true);}
    const rail=this.box(x+side*(width/2-.05),base+rise/2+1,z,.055,.055,Math.hypot(length,rise),'metal',false);rail.rotation.x=Math.atan(rise/length);this.decor.push(rail);}

@@ -11,7 +11,7 @@ class BrowserRoom{
  onLeave(fn){this.leaves.push(fn);}
 }
 export async function connectBrowserRoom(code,options){
- const hosting=!code;code=code||roomCode();const id=crypto.randomUUID(),room=new BrowserRoom(id,code),peer=new Peer(hosting?'fast-snipe-v4-'+code:undefined,{debug:0});
+ const hosting=!code;code=code||roomCode();const id=crypto.randomUUID(),room=new BrowserRoom(id,code),peer=new Peer(hosting?`fast-snipe-v${PROTOCOL}-${code}`:undefined,{debug:0});
  let worker,connection,settled=false,closed=false;const guests=new Map();
  const close=()=>{if(closed)return;closed=true;clearTimeout(timeout);worker?.terminate();peer.destroy();for(const fn of room.leaves)fn();};
  room.leave=close;
@@ -36,7 +36,7 @@ export async function connectBrowserRoom(code,options){
     guest.on('open',()=>guest.send({type:'identity',data:guestId}));
    });
   }else{
-   connection=peer.connect('fast-snipe-v4-'+code,{reliable:true,serialization:'binary'});
+   connection=peer.connect(`fast-snipe-v${PROTOCOL}-${code}`,{reliable:true,serialization:'binary'});
    room.send=(type,data)=>connection.send({type,data});
    connection.on('open',()=>connection.send({type:'hello',data:{...options,protocol:PROTOCOL}}));
    connection.on('data',message=>{if(message?.type==='identity'){room.sessionId=message.data;return;}if(message?.type)deliver(message.type,message.data);});

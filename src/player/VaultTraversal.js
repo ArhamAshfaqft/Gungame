@@ -8,7 +8,7 @@ export function planVault(position,height,yaw,colliders,speed=0){
  const ray=new T.Ray(new T.Vector3(position.x,feet+.1,position.z),forward);
  let obstacle=null,distance=Infinity;
  for(const box of colliders){
-  if(box.ramp||box.doorGroup)continue;
+  if(box.ramp||box.doorGroup||box.stairGuard)continue;
   const rise=box.max.y-feet;if(rise<.25||rise>1.45)continue;
   const point=ray.intersectBox(box,new T.Vector3());if(!point)continue;
   const d=point.distanceTo(ray.origin);

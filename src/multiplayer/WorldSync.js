@@ -7,11 +7,11 @@ function unpackGeometry(data){const g=new T.BufferGeometry();for(const [key,a] o
 export class WorldSync{
  constructor(scene,map,room=map){this.scene=scene;this.map=map;this.room=room;this.meshes=new Map();this.seen=new Map();this.latest=new Map();this.next=0;if(room.doorMesh&&room.doorBox)room.doorBox.supportMesh=room.doorMesh;for(const pane of room.glassPanes||[])if(pane.userData.collider)pane.userData.collider.supportMesh=pane;this.register();this.layout=this.next;for(const [id,m] of this.meshes)this.seen.set(id,this.signature(m));}
  register(){this.scene.updateMatrixWorld(true);this.scene.traverse(m=>{if(!m.isMesh||(!m.userData.isShootable&&!m.userData.breakable&&!m.userData.netWorldId))return;if(m.userData.fractureBatch||m.userData.propBatch)return;if(!m.userData.netWorldId)m.userData.netWorldId=String(this.next++);this.meshes.set(m.userData.netWorldId,m);});}
- signature(m,copyMatrix=true){return{geometry:m.geometry,position:m.geometry.attributes.position.version,index:m.geometry.index?.version,visible:m.visible,matrix:copyMatrix?m.matrixWorld.clone():m.matrixWorld,open:m.userData.breakable?.openAmount,opened:m.userData.breakable?.open??(m===this.room.doorMesh?this.room.door.open:undefined)};}
+ signature(m,copyMatrix=true){return{geometry:m.geometry,position:m.geometry.attributes.position.version,index:m.geometry.index?.version,visible:m.visible,matrix:copyMatrix?m.matrixWorld.clone():m.matrixWorld,open:m.userData.breakable?.openAmount,handle:!!m.userData.breakable?.handle?.visible,opened:m.userData.breakable?.open??(m===this.room.doorMesh?this.room.door.open:undefined)};}
  collect(){
   this.register();const changes=[];
   for(const [id,m] of this.meshes){const old=this.seen.get(id),now=this.signature(m,false),geometryChanged=!old||old.geometry!==now.geometry||old.position!==now.position||old.index!==now.index;
-   if(old&&!geometryChanged&&old.visible===now.visible&&old.matrix.equals(now.matrix)&&old.open===now.open&&old.opened===now.opened)continue;
+   if(old&&!geometryChanged&&old.visible===now.visible&&old.matrix.equals(now.matrix)&&old.open===now.open&&old.opened===now.opened&&old.handle===now.handle)continue;
    const panel=m.userData.breakable,material=Array.isArray(m.material)?m.material[0]:m.material;
    const entry={id,visible:m.visible,matrix:now.matrix.toArray(),shootable:!!m.userData.isShootable};
    if(m.userData.breakableLight)entry.lights=m.userData.breakableLight.lights.map(light=>light.intensity);
@@ -26,7 +26,7 @@ export class WorldSync{
    if(!entry.effect&&old&&old.opened!==now.opened&&now.visible&&(panel?.isDoor||m===this.room.doorMesh))entry.effect={kind:'doorOpen',id,position:new T.Vector3().setFromMatrixPosition(m.matrixWorld).toArray()};
    if(!old)entry.create={color:material.color?.getHex()??0xaaaaaa,surface:m.userData.physicalMaterial||m.userData.surface||'wood',name:m.name};
    if(panel?.pieces){
-    entry.panelMotion={destroyed:panel.destroyed,detached:!!panel.detachedEnvironment,open:panel.open,openAmount:panel.openAmount,group:panel.group.matrixWorld.toArray()};
+    entry.panelMotion={handleVisible:!!panel.handle?.visible&&m.visible&&!panel.destroyed,destroyed:panel.destroyed,detached:!!panel.detachedEnvironment,open:panel.open,openAmount:panel.openAmount,group:panel.group.matrixWorld.toArray()};
     if(geometryChanged)entry.panel={broken:[...panel.broken],ranges:panel.pieces.map(p=>[p.start,p.count]),facePieces:m.userData.fractureFacePieces||null,...entry.panelMotion};
    }
    entry.boxes=this.map.colliders.filter(b=>b.supportMesh===m||b.villaPanel?.mesh===m).map(b=>({min:b.min.toArray(),max:b.max.toArray(),door:b.doorGroup?{bounds:[b.doorBounds.min.toArray(),b.doorBounds.max.toArray()],matrix:b.doorGroup.matrixWorld.toArray()}:null}));
@@ -53,7 +53,7 @@ export class WorldSync{
     panel.broken=new Set(entry.panel.broken);
    }
    if(state&&panel){
-    panel.destroyed=state.destroyed;panel.detachedEnvironment=!!state.detached;panel.open=state.open;panel.openAmount=state.openAmount;
+    panel.destroyed=state.destroyed;panel.detachedEnvironment=!!state.detached;panel.open=state.open;panel.openAmount=state.openAmount;if(panel.handle)panel.handle.visible=state.handleVisible??(!state.destroyed&&entry.visible);
     const group=new T.Matrix4().fromArray(state.group);if(panel.group.parent)group.premultiply(panel.group.parent.matrixWorld.clone().invert());group.decompose(panel.group.position,panel.group.quaternion,panel.group.scale);panel.group.updateMatrixWorld(true);
    }
    if(entry.geometry){const old=m.geometry;m.geometry=unpackGeometry(entry.geometry);old.dispose();if(panel){for(const cached of panel.punctureGeometry?.values()||[])cached.geometry.dispose();panel.punctureGeometry=null;panel.punctureSolids=null;}}
@@ -61,6 +61,7 @@ export class WorldSync{
    const local=new T.Matrix4().fromArray(entry.matrix);if(m.parent)local.premultiply(m.parent.matrixWorld.clone().invert());local.decompose(m.position,m.quaternion,m.scale);m.visible=entry.visible;m.userData.isShootable=entry.shootable;m.updateMatrixWorld(true);
    const boxes=this.map.colliders;for(let i=boxes.length-1;i>=0;i--)if(boxes[i].supportMesh===m||boxes[i].villaPanel?.mesh===m)boxes.splice(i,1);
    for(const data of entry.boxes||[]){const b=new T.Box3(new T.Vector3().fromArray(data.min),new T.Vector3().fromArray(data.max));b.supportMesh=m;if(data.door){b.doorBounds=new T.Box3(new T.Vector3().fromArray(data.door.bounds[0]),new T.Vector3().fromArray(data.door.bounds[1]));b.doorGroup=new T.Group();b.doorGroup.matrixAutoUpdate=false;b.doorGroup.matrix.fromArray(data.door.matrix);b.doorGroup.matrix.decompose(b.doorGroup.position,b.doorGroup.quaternion,b.doorGroup.scale);b.doorGroup.updateMatrixWorld(true);}boxes.push(b);}
+   if(panel?.handle&&(!m.visible||panel.destroyed))panel.handle.visible=false;
    if(smooth)this.presentation.retarget(object,m,from);
   }
   if(entries.length){invalidateSupport(this.map.colliders);if(structural||!interpolate){this.map.shadowsDirty=true;this.room.shadowsDirty=true;}if(structural)this.map.debris?.wake();}
