@@ -14,7 +14,7 @@ export class VillaPanel {
   Object.assign(this,{map,width,height,kind,isDoor:door,name,damage:0,destroyed:false,open:false,openAmount:0,baseRotation:rotation});
   this.group=new THREE.Group();this.group.position.set(x,y,z);this.group.rotation.y=rotation;map.scene.add(this.group);
   this.construction=construction;this.thickness=construction?.thickness??(kind==='glass'?.025:kind==='plaster'?.18:kind==='floor'?.2:.065);
-  const material=map.materials[kind==='glass'?'glass':kind==='plaster'?'softWall':kind==='floor'?'floorPanel':'woodPanel'];
+  const material=map.materials[kind==='glass'?'glass':kind==='plaster'?'softWall':kind==='floor'?'floorPanel':door&&map.materials.doorLeaf?'doorLeaf':'woodPanel'];
   // Timber breaks along narrow, longer board sections rather than wall-sized chips.
   const cells=construction?timberCells(width,height,construction.boardWidth):null;
   if(construction?.gap)for(const cell of cells)for(const point of cell.polygon)point.x+=point.x<cell.center.x?construction.gap/2:-construction.gap/2;
@@ -25,7 +25,7 @@ export class VillaPanel {
    // double-sided skin is enough until the pane shatters as a whole.
    const g=panel.mesh.geometry;for(let i=0;i<g.index.count;i+=3)if(g.attributes.normal.getZ(g.index.getX(i))<.9)g.index.array.fill(0,i,i+3);
   }
-  const uv=panel.mesh.geometry.attributes.uv,positions=panel.mesh.geometry.attributes.position;for(let i=0;i<uv.count;i++)uv.setXY(i,positions.getX(i)/2,positions.getY(i)/2);
+  const uv=panel.mesh.geometry.attributes.uv,positions=panel.mesh.geometry.attributes.position;for(let i=0;i<uv.count;i++)uv.setXY(i,positions.getX(i)/(door?width:2),positions.getY(i)/(door?height:2));
   this.mesh=panel.mesh;this.mesh.name=name;this.pieces=panel.pieces;this.broken=new Set();this.health=new Map();this.boxes=new Map();
   this.bulletPatches=new Map();this.bulletPeak=new Map();
   this.mesh.castShadow=kind!=='glass';this.mesh.receiveShadow=true;this.mesh.userData={isShootable:true,surface:kind==='plaster'?'concrete':kind==='floor'?'wood':kind,breakable:this};this.group.add(this.mesh);
@@ -33,7 +33,16 @@ export class VillaPanel {
   this.group.updateMatrixWorld(true);
   for(const piece of this.pieces){const b=piece.bounds;const box=new THREE.Box3(new THREE.Vector3(b.min.x,b.min.y,-(this.thickness/2)),new THREE.Vector3(b.max.x,b.max.y,this.thickness/2)).applyMatrix4(this.mesh.matrixWorld);box.villaPanel=this;box.pieceId=piece.id;this.boxes.set(piece.id,box);}
   this.collisionBoxes=[];this.refreshCollision();
-  if(door){const handle=new THREE.Mesh(new THREE.BoxGeometry(.15,.035,.055),map.materials.metal);handle.position.set(width-.17,1.05,.09);this.group.add(handle);this.handle=handle;}
+  if(door){const handle=new THREE.Mesh(new THREE.BoxGeometry(.15,.035,.055),map.materials.metal);handle.position.set(width-.17,1.05,.09);this.group.add(handle);this.handle=handle;
+   // Hardware is visual only and follows the existing supported handle.
+   if(map.materials.doorHardware){handle.material=map.materials.doorHardware;
+    for(const side of [-1,1]){
+     const plate=new THREE.Mesh(new THREE.CylinderGeometry(.043,.043,.014,12),handle.material);plate.rotation.x=Math.PI/2;plate.position.set(-.045,0,side*.045-.09);handle.add(plate);
+     if(side<0){const back=new THREE.Mesh(handle.geometry,handle.material);back.position.z=-.18;handle.add(back);}
+     const key=new THREE.Mesh(new THREE.CylinderGeometry(.017,.017,.012,10),handle.material);key.rotation.x=Math.PI/2;key.position.set(-.045,-.12,side*.044-.09);handle.add(key);
+    }
+   }
+}
   map.panels.push(this);
  }
  syncHandle(){

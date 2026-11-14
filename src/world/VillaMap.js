@@ -50,7 +50,7 @@ export class VillaMap{
   this.blastScars=new BlastScars();
   this.environment=new EnvironmentSystem(this);
   this.liquids=new LiquidSystem(this);
-  this.collectWalls=true;this.seatingSpecs=[];this.decor=[];this.wallSpecs=[];this.artRequests=[];this.artMounts=[];this.floorSurfaces=[];this.floorOverlays=[];this.rugSpecs=[];this.roomLights=[];this.lighting();this.site();this.shell();buildVillaInteriors(this);buildGalleryWing(this);buildWellnessWing(this);this.buildWalls();buildWindowDressings(this);this.garden();this.finishArchitecture();this.roomFinishes();this.mountArtwork();this.projectRugs();bindFixtureDecor(this);this.environment.observeScene();this.contactShadows();this.batchDecor();batchVillaPanels(this);batchVillaProps(this);accelerateSceneRaycasts(this.scene);
+  this.collectWalls=true;this.seatingSpecs=[];this.decor=[];this.wallSpecs=[];this.artRequests=[];this.artMounts=[];this.floorSurfaces=[];this.floorOverlays=[];this.rugSpecs=[];this.roomLights=[];this.lighting();this.site();this.shell();buildVillaInteriors(this);buildGalleryWing(this);buildWellnessWing(this);this.buildWalls();buildWindowDressings(this);this.garden();this.finishArchitecture();this.mountArtwork();this.projectRugs();bindFixtureDecor(this);this.environment.observeScene();this.contactShadows();this.batchDecor();batchVillaPanels(this);batchVillaProps(this);accelerateSceneRaycasts(this.scene);
  }
  box(x,y,z,w,h,d,material='plaster',solid=true,decor=false,options={}){
   if(material==='marble'&&h<.2&&!options.unlayered)return countertop(this,{x,y,z,width:w,height:h,depth:d,material});
@@ -81,13 +81,16 @@ export class VillaMap{
    if(this.collectWalls)return;
   }
   const height=3.17,rotation=axis==='x'?Math.PI/2:0;
+  // Pick one finish for the entire authored wall, including its lintels.
+  const paint=base===0?'wineWall':axis==='x'&&Math.abs(coord)<=2.71?'softWall':axis==='z'&&base===6.8?(coord<1?'blueWall':'sandWall'):base===3.4&&axis==='z'&&from>=2.7?'sageWall':'softWall';
+
   const solid=(a,b,low,high)=>{if(b-a<.01||high-low<.01)return;const center=(a+b)/2;
    if(soft&&high-low>.3){
     const count=Math.max(1,Math.ceil((b-a)/2.8));
-    for(let i=0;i<count;i++){const start=a+(b-a)*i/count,width=(b-a)/count;this.panel(axis==='x'?coord:start,base+low,axis==='x'?start:coord,width,high-low,axis==='x'?-Math.PI/2:0,'plaster',false,'Soft plaster wall');}
+    for(let i=0;i<count;i++){const start=a+(b-a)*i/count,width=(b-a)/count;const panel=this.panel(axis==='x'?coord:start,base+low,axis==='x'?start:coord,width,high-low,axis==='x'?-Math.PI/2:0,'plaster',false,'Soft plaster wall');panel.mesh.material=this.materials[paint];panel.mesh.userData.wallFinishKey=[axis,coord,base,from,to].join(':');}
     return;
    }
-   this.box(axis==='x'?coord:center,base+(high+low)/2,axis==='x'?center:coord,axis==='x'?.22:b-a,high-low,axis==='x'?b-a:.22,material);
+   const block=this.box(axis==='x'?coord:center,base+(high+low)/2,axis==='x'?center:coord,axis==='x'?.22:b-a,high-low,axis==='x'?b-a:.22,material);if(material==='plaster')block.material=this.materials[paint];
   };
   // Side-wall panels use a -90 degree basis so their local +X follows world +Z.
   const panelAt=(opening)=>{const center=opening.at,w=opening.width,low=opening.sill||0,h=opening.height||2.3;
@@ -259,6 +262,7 @@ export class VillaMap{
  mountArtwork(){
   for(const request of this.artRequests){
    let {x,y,z,w,h}=request;
+   y=Math.floor(y/3.4)*3.4+1.65;
    // Prefer internal partitions when an exterior wall is mostly glazing.
    if(Math.abs(z)>10&&x<14&&Math.abs(x)>2.4){const level=Math.floor(y/3.4)*3.4;if(level===3.4)z=x<0?(z>0?2.64:2.36):-1.36;else if(level===6.8)z=x<0?(z>0?.14:-.14):4.14;}
    const candidates=[];
@@ -273,23 +277,31 @@ export class VillaMap{
      const a=at-.3,b=at+.3;
      spans=spans.flatMap(([l,r])=>b<=l||a>=r?[[l,r]]:[[l,Math.max(l,a)],[Math.min(r,b),r]].filter(([l,r])=>r>l));
     }
-    for(const [l,r] of spans){if(r-l<w+.3)continue;const xx=THREE.MathUtils.clamp(x,l+w/2+.15,r-w/2-.15);
+    for(const [l,r] of spans){if(r-l<w+.3)continue;const xx=(l+r)/2;
      if(this.artMounts.some(p=>p.wall===wall&&Math.abs(p.x-xx)<(p.w+w)/2+.2&&Math.abs(p.y-y)<(p.h+h)/2+.15))continue;
      candidates.push({wall,x:xx,score:Math.abs(xx-x)});
     }
    }
    candidates.sort((a,b)=>a.score-b.score);const mount=candidates[0];if(!mount)continue;
    const front=z>=mount.wall.coord?1:-1;x=mount.x;z=mount.wall.coord+front*.145;
-   this.artMounts.push({...request,x,z,wall:mount.wall});this.paintArtwork(x,y,z,w,h,front);
+   this.artMounts.push({...request,x,y,z,wall:mount.wall});this.paintArtwork(x,y,z,w,h,front);
   }
  }
  paintArtwork(x,y,z,w,h,front){
-  this.box(x,y,z,w+.1,h+.1,.04,'metal',false,true);
+  const frame=this.box(x,y,z,w+.1,h+.1,.045,'metal',false,true);frame.name='Framed landscape print';
+  frame.userData.wallAttachment=[V(x-w*.35,y,z),V(x+w*.35,y,z)];
   if(typeof document==='undefined')return;
-  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=320;const c=canvas.getContext('2d');c.fillStyle='#d6c8ad';c.fillRect(0,0,512,320);
-  for(let i=0;i<7;i++){c.fillStyle=['#6d7f7c','#343e41','#ad8253','#dccfb5'][i%4];c.beginPath();c.ellipse(60+i*75,150+Math.sin(i*3)*75,70+i*5,100,Math.sin(i),0,Math.PI*2);c.fill();}
-  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;const mat=new THREE.MeshStandardMaterial({map:texture,roughness:.9,side:THREE.DoubleSide});const picture=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mat);picture.position.set(x,y,z+front*.027);this.scene.add(picture);
+  const canvas=document.createElement('canvas');canvas.width=768;canvas.height=512;const c=canvas.getContext('2d');
+  c.fillStyle='#e9e1cf';c.fillRect(0,0,768,512);
+  const palettes=[['#c4c9bd','#8b9b91','#4e6868','#b99a6e'],['#d6c7ac','#b4aa8e','#6c7e75','#5b6968'],['#c3ced0','#99afb0','#647e80','#c4ac87']];
+  const palette=palettes[Math.abs(Math.round(x*3+y+z))%palettes.length];
+  c.save();c.beginPath();c.rect(40,40,688,432);c.clip();c.fillStyle=palette[0];c.fillRect(40,40,688,432);
+  for(let layer=1;layer<4;layer++){c.fillStyle=palette[layer];c.beginPath();c.moveTo(40,512);for(let px=40;px<=740;px+=8)c.lineTo(px,155+layer*65+Math.sin(px*.007+layer*2+x)*40+Math.sin(px*.019+z)*12);c.lineTo(740,512);c.closePath();c.fill();}
+  c.restore();const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=4;
+  const mat=new THREE.MeshStandardMaterial({map:texture,roughness:.96,side:THREE.DoubleSide});const picture=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mat);
+  picture.position.set(0,0,front*.027);picture.rotation.y=front<0?Math.PI:0;frame.add(picture);
  }
+
  sign(text,x,y,z,rotation=0){if(typeof document==='undefined')return;const canvas=document.createElement('canvas');canvas.width=512;canvas.height=128;const c=canvas.getContext('2d');c.fillStyle='#222b29';c.fillRect(0,0,512,128);c.fillStyle='#e5d5b1';c.font='bold 46px sans-serif';c.textAlign='center';c.fillText(text,256,81);const mesh=new THREE.Mesh(new THREE.PlaneGeometry(1.2,.3),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas),side:THREE.DoubleSide}));mesh.position.set(x,y,z);mesh.rotation.y=rotation;this.scene.add(mesh);}
  garden(){
   // Pool and timber deck. Water covers a solid shallow basin so there is no invisible fall.
@@ -343,13 +355,6 @@ export class VillaMap{
     spans=spans.flatMap(([l,r])=>a>=r||b<=l?[[l,r]]:[[l,Math.max(l,a)],[Math.min(r,b),r]].filter(([l,r])=>r-l>.02));
    }
    for(const [a,b] of spans)this.box(x,y+.055,(a+b)/2,.04,.11,b-a,'wood',false,true);
-  }
- }
- roomFinishes(){
-  for(const p of this.panels){if(p.kind!=='plaster')continue;const c=p.mesh.localToWorld(V(p.width/2,p.height/2,0)),floor=c.y<3.3?0:c.y<6.7?3.4:6.8;
-   if(floor===0)p.mesh.material=this.materials[c.x<0?'wineWall':'blueWall'];
-   else if(floor===3.4&&c.x>2.3&&c.x<14)p.mesh.material=this.materials[c.z<-1.5?'sageWall':'blueWall'];
-   else if(floor===6.8)p.mesh.material=this.materials[c.x<0?(c.z<0?'blueWall':'sandWall'):(c.z<-2?'sageWall':'softWall')];
   }
  }
  projectFloorOverlay(entry){

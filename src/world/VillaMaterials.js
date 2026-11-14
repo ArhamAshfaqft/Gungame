@@ -7,7 +7,15 @@ function maps(kind,base,size=256){
  let seed=731;const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
  for(let y=0;y<size;y++)for(let x=0;x<size;x++){
   const noise=rand()-.5,u=x/size,v=y/size;let grain=0,height=.55,r=.8;
-  if(kind==='oak'||kind==='walnut'){
+  if(kind==='door'){
+   // Continuous vertical grain and recessed joinery, never floorboard joints.
+   grain=Math.sin(x*.8+Math.sin(y*.018)*1.6)*3+Math.sin(x*2.9+y*.005)*1.5+noise*3;
+   const edge=Math.min(u,1-u),inPanel=edge>.13&&edge<.44&&v>.095&&v<.905;
+   const bevel=Math.min(Math.abs(edge-.13),Math.abs(edge-.44),Math.abs(v-.095),Math.abs(v-.905));
+   height=inPanel?.39:.57;if(inPanel)grain-=9;
+   if(bevel<.008&&edge>.12&&v>.085&&v<.915){height=.25;grain-=19;}
+   r=.48+noise*.06;
+  }else if(kind==='oak'||kind==='walnut'){
    const board=Math.floor(x/32),joint=x%32<1||((y+board*83)%256)<2;
    grain=Math.sin(x*2.4+Math.sin(y*.025)*4)*4+Math.sin(x*11+y*.01)*2+(board%3-1)*8+noise*8;
    if(joint)grain-=35;height=joint?.15:.55+Math.sin(x*2.4)*.06;r=.55+noise*.1;
@@ -41,13 +49,15 @@ export function upgradeVillaMaterials(map){
  make('epoxy','terrazzo',[92,102,99],{bumpScale:.006});make('bathTile','marble',[106,125,121],{bumpScale:.003});
  make('floorPanel','oak',[137,105,67],{vertexColors:true,bumpScale:.012});
  m.wood.dispose();make('wood','walnut',[107,76,46],{bumpScale:.02});m.woodPanel.dispose();make('woodPanel','oak',[120,86,51],{vertexColors:true});
+ make('doorLeaf','door',[105,78,53],{vertexColors:true,bumpScale:.009});
+ m.doorHardware=new THREE.MeshStandardMaterial({color:0x9a9e9b,metalness:.85,roughness:.34});
  make('curtain','fabric',[169,162,144],{side:THREE.DoubleSide});
  for(const name of ['wood','woodPanel','walnut','oakFloor','floorPanel'])m[name].userData.surface='wood';
  m.metal.color.setHex(0x202b2b);m.steel.roughness=.32;m.steel.metalness=.8;
  m.fabric.dispose();make('fabric','fabric',[183,174,153],{bumpScale:.02});
  m.ochre.dispose();make('ochre','fabric',[139,96,54],{bumpScale:.018});
  m.glass.opacity=.15;m.glass.color.setHex(0xc8ddd9);
- for(const [name,color] of [['sageWall',0x899b8b],['blueWall',0x586f72],['sandWall',0xc4b293],['wineWall',0x8a6b51]]){m[name]=m.softWall.clone();m[name].color.setHex(color);}
+ for(const [name,color] of [['sageWall',0xa5b0a1],['blueWall',0x8b9b9c],['sandWall',0xc5bda9],['wineWall',0xa79784]]){m[name]=m.softWall.clone();m[name].color.setHex(color);}
  m.glowWarm=new THREE.MeshBasicMaterial({color:0xffe2ac});m.glowCool=new THREE.MeshBasicMaterial({color:0xb3dedf});
  m.glowAmber=new THREE.MeshBasicMaterial({color:0xcf7331});
  map.materials=m;
