@@ -233,3 +233,13 @@ test('villa wall breaches remain open after round time and subsequent unrelated 
  other.takeBulletHit({point:other.mesh.localToWorld(new THREE.Vector3(.5,1,.0325)),instanceId:other.pieces[10].id},125,new THREE.Vector3(0,0,-1),{slot:'primary',distance:2});
  assert.deepEqual(panel.mesh.geometry.index.array,indices);
 });
+
+ test('hall floor finishes stop at partition walls and loose decorative hall blocks are absent',()=>{
+ const map=new VillaMap(new THREE.Scene());
+ const finishes=map.floorSurfaces.filter(m=>m.name==='Timber floor finish over concrete');
+ for(const mesh of finishes){const b=new THREE.Box3().setFromObject(mesh);if(Math.abs(b.max.y-3.4)<.02)assert.ok(b.max.x<=-2.7+.0001,'west timber finish must stop at hall wall');}
+ for(const y of [3.4,6.8])for(const x of [-2.25,2.25])for(const z of [2,8]){
+  assert.ok(!map.scene.children.some(m=>m.isMesh&&m.position.distanceTo(new THREE.Vector3(x,y+.09,z))<.001),'decorative block removed');
+ }
+ assert.ok(map.colliders.some(b=>b.containsPoint(new THREE.Vector3(-2.25,3.3,4.5))),'hall still has solid floor');
+ });

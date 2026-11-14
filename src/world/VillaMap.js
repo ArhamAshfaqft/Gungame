@@ -109,9 +109,12 @@ export class VillaMap{
   const gaps=[[-1.3,1.3,-8,-1],[10.45,12.55,-8,-1],[-11,-9,-8.8,-6.8]];
   const cuts=[...gaps,...zones];let rectangles=[[-14,14,-11,11]];
   for(const [x0,x1,z0,z1] of cuts){const next=[];for(const [a,b,c,d] of rectangles){const l=Math.max(a,x0),r=Math.min(b,x1),near=Math.max(c,z0),far=Math.min(d,z1);if(l>=r||near>=far){next.push([a,b,c,d]);continue;}if(a<l)next.push([a,l,c,d]);if(r<b)next.push([r,b,c,d]);if(c<near)next.push([l,r,c,near]);if(far<d)next.push([l,r,far,d]);}rectangles=next;}
+  // Finish boundaries follow the interior walls, independently of breach cuts.
+  for(const edge of [-2.7,2.7,10.5])rectangles=rectangles.flatMap(([a,b,c,d])=>a<edge&&edge<b?[[a,edge,c,d],[edge,b,c,d]]:[[a,b,c,d]]);
+  rectangles=rectangles.flatMap(([a,b,c,d])=>c<-1.5&&-1.5<d?[[a,b,c,-1.5],[a,b,-1.5,d]]:[[a,b,c,d]]);
   for(const [a,b,c,d] of rectangles){
-   const floorMat=y===6.8?'oakFloor':a>2.4&&d<-1?'tile':a<-2?'oakFloor':'stone',timber=floorMat==='oakFloor';
-   const slab=this.box((a+b)/2,y-.12-(timber?.018:0),(c+d)/2,b-a,.24,d-c,'concrete');
+   const floorMat=y===6.8?'oakFloor':a>=2.7&&b<=10.5&&d<=-1.5?'tile':b<=-2.7?'oakFloor':'stone',timber=floorMat==='oakFloor';
+   const slab=this.box((a+b)/2,y-.12-(timber?.018:0),(c+d)/2,b-a+.000002,.24,d-c+.000002,'concrete');
    const finish=this.box((a+b)/2,timber?y-.009:y+.002,(c+d)/2,b-a,timber?.018:.004,d-c,floorMat,timber,true);
    if(timber){finish.name='Timber floor finish over concrete';finish.userData.thickness=.018;finish.userData.construction='finish';finish.userData.grainAxis='z';}
    this.floorSurfaces.push(timber?finish:slab);
@@ -323,7 +326,6 @@ export class VillaMap{
   for(const x of [-13.5,-2.5])for(const z of [-26,-14])this.plant(x,3.4,z,.4);
   for(const y of [3.4,6.8])for(const z of [2,8]){
    this.box(0,y+3.02,z,2,.04,.08,'white',false,true);
-   for(const x of [-2.25,2.25])this.box(x,y+.09,z,.07,.08,.7,'wood',false,true);
   }
   for(const y of [3.4,6.8])for(const x of [-8,8]){
    this.box(x,y+3.03,5,6.8,.08,.12,'wood',false,true);
