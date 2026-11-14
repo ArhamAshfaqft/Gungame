@@ -29,6 +29,9 @@ export class DebrisPool {
         this.mesh.count = 0;
         this.matrix = new THREE.Matrix4();
         this.scale = new THREE.Vector3(1, 1, 1);
+        this.zero = new THREE.Vector3();
+        this.spinEuler = new THREE.Euler();
+        this.spinRotation = new THREE.Quaternion();
         scene.add(this.mesh);
     }
 
@@ -87,7 +90,7 @@ export class DebrisPool {
                 if(this.drag){piece.velocity.x*=Math.exp(-this.drag*step);piece.velocity.z*=Math.exp(-this.drag*step);}
                 if(this.flutter){piece.velocity.x+=Math.sin(piece.life*8+i)*this.flutter*step;piece.velocity.z+=Math.cos(piece.life*7+i)*this.flutter*step;}
                 piece.position.addScaledVector(piece.velocity, step);
-                piece.rotation.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(piece.spin.x * step, piece.spin.y * step, piece.spin.z * step)));
+                piece.rotation.multiply(this.spinRotation.setFromEuler(this.spinEuler.set(piece.spin.x * step, piece.spin.y * step, piece.spin.z * step)));
                 piece.supportTime=(piece.supportTime||0)+delta;
                 const sample=piece.supportSample;
                 if(!sample||!this.supportInterval||piece.supportTime>=this.supportInterval||Math.hypot(piece.position.x-sample.x,piece.position.z-sample.z)>this.supportTravel){
@@ -102,8 +105,11 @@ export class DebrisPool {
                         piece.settled=true;
                         piece.supportRevision=piece.supportSample?.revision??revision;
                         piece.supportState=piece.supportSample.state;piece.supportDirty=false;
-                        const q=new THREE.Quaternion();piece.shape.decompose(new THREE.Vector3(),q,new THREE.Vector3());
-                        piece.rotation.setFromAxisAngle(new THREE.Vector3(0,1,0),piece.restYaw).multiply(q.invert());
+                        const q=new THREE.Quaternion(),s=new THREE.Vector3();piece.shape.decompose(new THREE.Vector3(),q,s);
+                        s.multiply(this.shapeBounds.getSize(new THREE.Vector3()));
+                        const axis=['x','y','z'].sort((a,b)=>Math.abs(s[a])-Math.abs(s[b]))[0],up=new THREE.Vector3();up[axis]=1;
+                        const flat=new THREE.Quaternion().setFromUnitVectors(up,new THREE.Vector3(0,1,0));
+                        piece.rotation.setFromAxisAngle(new THREE.Vector3(0,1,0),piece.restYaw).multiply(flat).multiply(q.invert());
                         piece.position.y=support+this.bottomOffset(piece);piece.velocity.set(0,0,0);piece.spin.set(0,0,0);
                     }
                     piece.velocity.y *= -0.22;
@@ -122,7 +128,7 @@ export class DebrisPool {
     }
 
     bottomOffset(piece){
-        this.matrix.compose(new THREE.Vector3(),piece.rotation,this.scale).multiply(piece.shape);
+        this.matrix.compose(this.zero,piece.rotation,this.scale).multiply(piece.shape);
         this.bounds.copy(this.shapeBounds).applyMatrix4(this.matrix);
         return Math.max(.001,-this.bounds.min.y);
     }

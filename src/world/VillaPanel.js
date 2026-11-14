@@ -36,7 +36,41 @@ export class VillaPanel {
   if(door){const handle=new THREE.Mesh(new THREE.BoxGeometry(.15,.035,.055),map.materials.metal);handle.position.set(width-.17,1.05,.09);this.group.add(handle);this.handle=handle;}
   map.panels.push(this);
  }
+ syncHandle(){
+  if(!this.handle||!this.handle.visible)return;
+  this.group.updateWorldMatrix(true,true);
+  const ray=this.handleSupportRay??=new THREE.Raycaster();
+  const direction=new THREE.Vector3(0,0,-1).transformDirection(this.mesh.matrixWorld);
+  let supported=false;
+  for(const dx of [-.035,0,.035]){
+   const point=this.mesh.localToWorld(new THREE.Vector3(this.handle.position.x+dx,this.handle.position.y,.3));
+   ray.set(point,direction);ray.far=.6;
+   if(ray.intersectObject(this.mesh,false).length){supported=true;break;}
+  }
+  if(!supported){
+   this.handle.visible=false;
+   this.map.emitPanelDebris('metal',this.handle.getWorldPosition(new THREE.Vector3()),new THREE.Vector3(0,-1,0),new THREE.Vector2(.15,.035),this.map.materials.metal.color);
+  }
+ }
  get toughness(){return this.construction?.strength??physicalMaterial(this.mesh).fracture*(this.kind==='floor'?4/3:this.kind==='wood'?(this.isDoor?5/6:11/9):1);}
+ // The hinge is local x=0. Latch-edge damage cannot release the leaf.
+ hingeSupported(){
+  if(!this.isDoor)return true;
+  if(this.hingeRevision===this.broken.size)return this.hingeIntact;
+  this.hingeRevision=this.broken.size;
+  const x=Math.min(.025,this.width*.03);
+  this.hingeIntact=[this.height*.18,this.height*.82].some(y=>this.pieces.some(p=>{
+   if(this.broken.has(p.id))return false;
+   let sign=0;const polygon=p.polygon;
+   for(let i=0;i<polygon.length;i++){
+    const a=polygon[i],b=polygon[(i+1)%polygon.length],cross=(b.x-a.x)*(y-a.y)-(b.y-a.y)*(x-a.x);
+    if(Math.abs(cross)<1e-8)continue;
+    const side=Math.sign(cross);if(sign&&side!==sign)return false;sign=side;
+   }
+   return true;
+  }));
+  return this.hingeIntact;
+ }
  blastDamage(position,center,power){
   const delta=center.clone().sub(position),distance=delta.length(),normal=new THREE.Vector3(0,0,1).transformDirection(this.mesh.matrixWorld);
   return blastImpact(physicalMaterial(this.mesh),distance,power,normal.dot(delta.normalize()));
@@ -82,6 +116,11 @@ export class VillaPanel {
   }
   if(this.kind==='floor'&&this.broken.size)this.map.debris?.wake();
   this.map.environment?.supportChanged(this.mesh);
+  this.syncHandle();
+  if(this.isDoor&&!this.destroyed&&!this.hingeSupported()){
+   const environment=this.map.environment,record=environment?.byObject.get(this.group);
+   if(record){record.forcedDetached=true;environment.activate(record);}
+  }
  }
  takeBulletHit(hit,damage=34,direction=new THREE.Vector3(0,0,1),impact=null){
   if(this.destroyed)return{penetrates:true,damageMultiplier:.85};
@@ -89,6 +128,7 @@ export class VillaPanel {
    if(impact){const normal=new THREE.Vector3(0,0,1).transformDirection(this.mesh.matrixWorld);return penetrationResponse(physicalMaterial(this.mesh),this.mesh.userData.thickness,impact.energy??projectileEnergy(impact.slot,impact.distance,impact.multiplier??1),normal.dot(direction));}
    return{penetrates:true,damageMultiplier:.8};}
   const local=this.mesh.worldToLocal(hit.point.clone());
+  const brokenBefore=this.broken.size;
   const piece=Number.isInteger(hit.instanceId)?this.pieces[hit.instanceId]:this.pieces.reduce((best,p)=>p.center.distanceToSquared(local)<best.center.distanceToSquared(local)?p:best,this.pieces[0]);
   if(!piece||this.broken.has(piece.id))return{penetrates:true,damageMultiplier:.85};
   this.damage+=damage;const radius=.035+Math.sqrt(damage/125)*.08;
@@ -106,13 +146,14 @@ export class VillaPanel {
   if(this.broken.size)this.exposeFrame();
   if(this.broken.size===this.pieces.length){this.destroyed=true;this.mesh.visible=false;this.mesh.userData.isShootable=false;if(this.handle)this.handle.visible=false;soundEngine.playDoorBreak();}
   else if(this.kind==='plaster')soundEngine.playImpact(hit.point);else soundEngine.playWoodHit();
-  this.refreshCollision();
+  if(this.isDoor||this.broken.size!==brokenBefore)this.refreshCollision();
   if(impact){const normal=new THREE.Vector3(0,0,1).transformDirection(this.mesh.matrixWorld),energy=impact.energy??projectileEnergy(impact.slot,impact.distance,impact.multiplier??1),response=penetrationResponse(physicalMaterial(this.mesh),this.mesh.userData.thickness,energy,normal.dot(direction));
    if(response.penetrates&&(this.mesh.userData.physicalMaterial==='wood'||this.construction&&this.mesh.userData.physicalMaterial==='plaster')&&!this.broken.has(piece.id))puncturePanel(this,hit.point,direction,energy);
    else if(this.mesh.userData.physicalMaterial==='wood'&&!this.broken.has(piece.id)){
     const stress=(this.health.get(piece.id)||0)/this.toughness;
     if(stress>=.35)puncturePanel(this,hit.point,direction,energy,{depth:this.mesh.userData.thickness*Math.min(.85,stress),radius:.009+.01*stress});
    }
+   this.syncHandle();
    return response;
   }
   return{penetrates:false};

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {chaseCameraPosition,bodyMovement} from '../src/player/ThirdPersonView.js';
+import {ThirdPersonView,chaseCameraPosition,bodyMovement} from '../src/player/ThirdPersonView.js';
 test('chase camera stays behind the eye, closes in while aiming, and stops before walls',()=>{
  const eye=new THREE.Vector3(0,1.6,0),rotation=new THREE.Quaternion();
- const free=chaseCameraPosition(eye,rotation,[]);assert.ok(free.z>3);assert.ok(chaseCameraPosition(eye,rotation,[],true).z<free.z);
+ const free=chaseCameraPosition(eye,rotation,[]);assert.ok(free.z>=2&&free.z<=2.1);assert.ok(chaseCameraPosition(eye,rotation,[],true).z<free.z);
  const wall=new THREE.Box3(new THREE.Vector3(-2,0,1.5),new THREE.Vector3(2,3,1.7));const blocked=chaseCameraPosition(eye,rotation,[wall]);assert.ok(blocked.z<1.3);assert.ok(blocked.z>0);
  const yaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI);assert.ok(chaseCameraPosition(eye,yaw,[]).z<0);
 });
@@ -23,4 +23,11 @@ test('player movement uses the same body coordinates as imported root motion at 
 test('crouched chase camera stays above the floor when looking upward',()=>{
  const position=chaseCameraPosition(new THREE.Vector3(0,1.05,0),new THREE.Quaternion().setFromEuler(new THREE.Euler(.8,0,0)),[],false,0);
  assert.ok(position.y>=.22);
+});
+
+test('third-person ADS temporarily uses eye sights without changing the chosen view mode',()=>{
+ const view=Object.create(ThirdPersonView.prototype);view.enabled=true;view.weapon={isAiming:false,isReloading:false};view.equipment={held:null};
+ assert.equal(view.usesChaseCamera,true);view.weapon.isAiming=true;assert.equal(view.aimingThroughSights,true);assert.equal(view.usesChaseCamera,false);assert.equal(view.enabled,true);
+ view.weapon.isAiming=false;assert.equal(view.usesChaseCamera,true);
+ view.allowSightCamera=false;view.weapon.isAiming=true;assert.equal(view.aimingThroughSights,false,'remote avatars must stay visible when aiming');
 });

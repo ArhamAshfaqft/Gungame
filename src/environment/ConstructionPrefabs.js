@@ -39,6 +39,7 @@ export function countertop(map,{x,y,z,width:w,height:h,depth:d,material='marble'
 
 export function bookshelf(map,{x,y,z,width:w,rotation=0}){
  const group=new T.Group();group.position.set(x,y,z);group.rotation.y=rotation;map.scene.add(group);const frame=[];
+ group.userData.impactFurniture=true;
  const part=(xx,yy,zz,ww,hh,dd,name)=>{const m=map.box(xx,yy,zz,ww,hh,dd,'walnut',true);m.removeFromParent();group.add(m);m.name=name;return m;};
  const back=part(0,1.35,-.18,w,2.7,.018,'Bookshelf back');frame.push(back);
  const left=part(-w/2+.025,1.35,0,.05,2.7,.44,'Bookshelf side'),right=part(w/2-.025,1.35,0,.05,2.7,.44,'Bookshelf side');frame.push(left,right);

@@ -1,0 +1,11 @@
+Animated pistol by DJMaesen
+https://sketchfab.com/3d-models/animated-pistol-bd896167e7ca44f19597d3afe6a8d83f
+https://sketchfab.com/bumstrum
+Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0).
+https://creativecommons.org/licenses/by/4.0/
+
+Adaptation: ambient frames 234–264 were sampled and retargeted onto the
+Fast Snipe SWAT hand skeleton and existing M9 weapon coordinates. Source
+meshes and textures are not included in this runtime animation export.
+Preparation script: scripts/prepare-pistol-hold.mjs
+Local source: animated_pistol.glb

@@ -747,3 +747,8 @@ body, html {
 .map-brief {color:#afc1c6;font-size:13px;line-height:1.6;margin:-5px 0 20px;text-align:left;}
 #reset-villa { display:block; width:100%; margin-top:10px; padding:11px; border:1px solid #67737a; border-radius:4px; background:#18232b; color:#d6e0e4; font:600 12px 'Chakra Petch',sans-serif; letter-spacing:1px; cursor:pointer; }
 #reset-villa:hover { border-color:#edba58; color:#edba58; }
+
+#pose-inspector{position:fixed;right:24px;top:68px;z-index:12;padding:10px 14px;background:rgba(18,26,33,.88);border:1px solid #637381;border-radius:5px;color:#e9b85a;font:600 12px Arial,sans-serif;cursor:pointer}
+#pose-inspector:disabled{opacity:.5}
+#pose-inspector-help{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:20;padding:12px 18px;background:#121a21ed;color:#e9b85a;font:600 13px Arial,sans-serif;white-space:nowrap;pointer-events:none}
+.inspecting-pose #crosshair,.inspecting-pose #scope-overlay,.inspecting-pose #flash-overlay,.inspecting-pose #smoke-overlay{visibility:hidden}

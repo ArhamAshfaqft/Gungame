@@ -10,6 +10,7 @@ import {soundEngine} from '../src/audio/SoundEngine.js';
 import {DestructionPipeline} from '../src/environment/DestructionPipeline.js';
 import {DestructionWorkers} from '../src/environment/DestructionWorkers.js';
 import {FrameWorkQueue} from '../src/environment/FrameWorkQueue.js';
+import {collisionVolumes,primeCollisionVolumes} from '../src/environment/CollisionVolumes.js';
 for(const key of ['playWoodHit','playDoorBreak','playImpact','playGlassBreak'])soundEngine[key]=()=>{};
 const makeMesh=(material='wood',w=1,h=1,d=.06)=>{const mesh=new T.Mesh(new T.BoxGeometry(w,h,d),new T.MeshStandardMaterial());mesh.userData={physicalMaterial:material,isShootable:true};mesh.position.set(1,2,3);mesh.rotation.set(.2,.6,-.1);mesh.updateMatrixWorld(true);return mesh;};
 function sameGeometry(a,b){for(const key of ['position','normal','uv','color'])assert.deepEqual(a.attributes[key]?.array,b.attributes[key]?.array,key);assert.deepEqual(a.index?.array,b.index?.array);}
@@ -25,11 +26,30 @@ test('worker mesh cuts, penetration, rail severing and metal dents match synchro
   const payload=packOperation(remote),source=Array.from(b.geometry.attributes.position.array),value=runOperation(direct),result=computeOperation(structuredClone(payload,{transfer:transfers(payload)}));
   assert.deepEqual(Array.from(b.geometry.attributes.position.array),source,'only copied buffers are transferred');
   assert.equal(applyOperation(remote,result),value,kind);sameGeometry(a.geometry,b.geometry);assert.equal(a.visible,b.visible);
+  const volumes=mesh=>collisionVolumes(mesh).map(box=>[box.min.toArray(),box.max.toArray()]);
+  assert.deepEqual(volumes(b),volumes(a),`${kind} retains every collision volume`);
+  if(result.geometry)assert.deepEqual(result.collisionBoxes,volumes(a),'worker prepares the same local collision geometry');
   if(kind==='chip'||kind==='puncture'){
    const next=[new T.Vector3(.09,.04,.03),new T.Vector3(0,0,1),.13,.05];
-   runOperation(operation('chip',a,next));const op=operation('chip',b,next);applyOperation(op,computeOperation(packOperation(op)));sameGeometry(a.geometry,b.geometry);
+   runOperation(operation('chip',a,next));const op=operation('chip',b,next);applyOperation(op,computeOperation(packOperation(op)));sameGeometry(a.geometry,b.geometry);assert.deepEqual(volumes(b),volumes(a),'later cuts replace the prepared collision cache');
   }
  }
+});
+
+test('prepared collision volumes invalidate on geometry and solid changes and cannot override detached panel cells',()=>{
+ const mesh=makeMesh(),prepared=[mesh.geometry.boundingBox?.clone()||new T.Box3().setFromBufferAttribute(mesh.geometry.attributes.position)];
+ primeCollisionVolumes(mesh,prepared);assert.equal(collisionVolumes(mesh),prepared);
+ mesh.geometry.translate(.2,0,0);assert.notEqual(collisionVolumes(mesh),prepared);
+ primeCollisionVolumes(mesh,prepared);mesh.userData.fractureSolids=[];assert.deepEqual(collisionVolumes(mesh),[]);
+ mesh.userData.breakable={detachedEnvironment:true,broken:new Set(),thickness:.1,pieces:[{id:0,bounds:new T.Box2(new T.Vector2(0,0),new T.Vector2(1,1))}]};
+ primeCollisionVolumes(mesh,[]);assert.equal(collisionVolumes(mesh).length,1);mesh.userData.breakable.broken.add(0);assert.deepEqual(collisionVolumes(mesh),[]);
+});
+
+test('loose-item cuts retain their exact geometry without preparing unused compound collision shapes',()=>{
+ const a=makeMesh('paper'),b=makeMesh('paper');a.userData.looseItem=b.userData.looseItem=true;
+ const args=[new T.Vector3(0,0,.03),new T.Vector3(0,0,1),.1,.04],op=operation('chip',b,args),result=computeOperation(packOperation(op));
+ assert.equal(result.collisionBoxes,null);runOperation(operation('chip',a,args));applyOperation(op,result);sameGeometry(a.geometry,b.geometry);
+ assert.deepEqual(collisionVolumes(b),collisionVolumes(a),'fallback collision preparation stays available if needed later');
 });
 
 test('worker surface decals retain local placement, UVs, material ownership and cannot resurrect removed marks',()=>{

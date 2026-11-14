@@ -39,3 +39,12 @@ test('a damaged cantilever fails under crouched player load after a warning dela
  floor.update(.2,eye,{height:1.05,speed:0});assert.ok(!floor.boards.broken.has(target.id));
  for(let i=0;i<4;i++)floor.update(.2,eye,{height:1.05,speed:0});assert.ok(floor.boards.broken.has(target.id));
 });
+
+test('a joining player loads the floor even when the first player is elsewhere',()=>{
+ const {floor}=fixture(),target=floor.boards.pieces.find(p=>p.row===1&&p.board===3);floor.boards.health.set(target.id,90);
+ for(const beam of floor.joists.filter(b=>b.row===1))floor.breakJoist(beam);
+ const eye=floor.boards.mesh.localToWorld(new T.Vector3(target.center.x,target.center.y,0));eye.y=4.45;
+ const away=new T.Vector3(30,1.65,30),players=[{position:away,height:1.65,speed:0},{position:eye,height:1.05,speed:0}];
+ floor.update(.2,away,{players});assert.ok(!floor.boards.broken.has(target.id));
+ for(let i=0;i<4;i++)floor.update(.2,away,{players});assert.ok(floor.boards.broken.has(target.id));
+});

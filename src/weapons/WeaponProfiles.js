@@ -5,6 +5,9 @@ export const WEAPONS = Object.freeze({
     pistol: { name: 'M9 // 9 MM', mode: 'SEMI AUTO', magazine: 15, reserve: 45, interval: 0.18,
         reloadTime: 1.15, aimFov: 62, bodyDamage: 34, headDamage: 100, range: 80,
         hip: [0.17, -0.17, -0.55], aim: [-0.002, -0.093, -0.50], recoil: 0.35 },
+    assault: { name: 'M4A1 // 5.56', mode: 'FULL AUTO', automatic: true, magazine: 30, reserve: 120, interval: .1,
+        reloadTime: 2.2, aimFov: 58, bodyDamage: 36, headDamage: 108, range: 120,
+        hip: [.22, -.18, -.56], aim: [0, -.1432523181, -.35], recoil: .24, fireActionTime: .11 },
 });
 
 export function createAmmoStores() {

@@ -6,6 +6,9 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { instantiateSwatRig, LEFT_GRIP, RIGHT_GRIP } from '../src/models/SwatRig.js';
 import { emptyPose } from '../src/studio/PoseLibrary.js';
 import { sampleViewAction } from '../src/models/ViewActions.js';
+import { samplePistolHold } from '../src/models/PistolHold.js';
+import { solveHandContact } from '../src/studio/HandContact.js';
+import {setCharacterEyeView,characterEyePosition,lookThroughCharacter} from '../src/models/SharedEyeView.js';
 
 // Load the actual production skeleton in Node; textures are irrelevant to pose validation.
 const source = readFileSync(new URL('../public/assets/operators/swat.glb', import.meta.url));
@@ -30,6 +33,63 @@ const makeViewRig = () => {
     reference.add(rig.object);
     return { rig, reference };
 };
+
+test('eye view hides head triangles and restores the exact full mesh without changing the shared pose',()=>{
+ const rig=instantiateSwatRig(gltf.scene.getObjectByName('SWAT_Body'));
+ const meshes=[];rig.object.traverse(mesh=>{if(mesh.isSkinnedMesh)meshes.push({mesh,geometry:mesh.geometry,count:mesh.geometry.index.count});});
+ const before=[...rig.rest.keys()].map(b=>({p:b.position.toArray(),q:b.quaternion.toArray()}));
+ setCharacterEyeView(rig,true);
+ assert.ok(meshes.some(({mesh,count})=>mesh.geometry.index.count<count));
+ const first=meshes.map(({mesh})=>mesh.geometry);
+ setCharacterEyeView(rig,true);assert.deepEqual(meshes.map(({mesh})=>mesh.geometry),first);
+ const camera=new THREE.PerspectiveCamera(85,1,.02,30);lookThroughCharacter(camera,rig);
+ assert.ok(camera.position.distanceTo(characterEyePosition(rig))<1e-6);
+ assert.ok(camera.getWorldDirection(new THREE.Vector3()).distanceTo(new THREE.Vector3(0,0,1))<1e-6);
+ setCharacterEyeView(rig,false);for(const{mesh,geometry}of meshes)assert.equal(mesh.geometry,geometry);
+ assert.deepEqual([...rig.rest.keys()].map(b=>({p:b.position.toArray(),q:b.quaternion.toArray()})),before);
+});
+
+test('marked palm contact meets a reachable gun point, follows weapon transforms and preserves wrist direction and arm lengths', () => {
+    const { rig, reference } = makeViewRig();
+    rig.reset(); rig.poseHands(reference);
+    const hand=rig.bones.LeftHand,point=[0,4,0],rotation=hand.getWorldQuaternion(new THREE.Quaternion());
+    const palm=hand.localToWorld(new THREE.Vector3().fromArray(point));
+    const desired=palm.clone().add(new THREE.Vector3(.015,-.01,.02));
+    const contact={weaponPoint:reference.worldToLocal(desired.clone()).toArray(),palmPoint:point};
+    const lengths=['LeftForeArm','LeftHand'].map(name=>rig.bones[name].position.length());
+    const miss=solveHandContact(rig,'Left',contact,reference);
+    assert.ok(miss<.001,`gap ${miss}`);
+    assert.ok(rotation.angleTo(hand.getWorldQuaternion(new THREE.Quaternion()))<1e-6);
+    reference.position.set(.08,-.02,.01);reference.rotation.y=.12;reference.updateMatrixWorld(true);
+    assert.ok(solveHandContact(rig,'Left',contact,reference)<.001);
+    assert.deepEqual(['LeftForeArm','LeftHand'].map(name=>rig.bones[name].position.length()),lengths);
+    const far={weaponPoint:[0,2,0],palmPoint:point};
+    assert.ok(solveHandContact(rig,'Left',far,reference)>1,'unreachable contact reports the remaining gap');
+    assert.deepEqual(['LeftForeArm','LeftHand'].map(name=>rig.bones[name].position.length()),lengths);
+});
+
+test('downloaded pistol grip reaches both wrists without stretching and leaves aiming and saved data intact', () => {
+    const pack = JSON.parse(readFileSync(new URL('../public/assets/animations/pistol-hold.json', import.meta.url)));
+    const { rig, reference } = makeViewRig();
+    const custom = emptyPose(); custom.Right.fingers.Index[1] = .1;
+    const before = JSON.stringify(custom);
+    for (const time of [0, .2, .5, .8]) {
+        const hold = samplePistolHold(pack, time);
+        rig.reset(); rig.poseHands(reference, { pose: 'pistol', custom, pistolHold: hold });
+        for (const side of ['Left', 'Right']) {
+            assert.ok(rig.bones[side + 'Hand'].getWorldPosition(new THREE.Vector3()).distanceTo(hold.hands[side].position) < .005);
+            for (const [bone, rest] of rig.rest) {
+                if (!/Arm/.test(bone.name)) assert.ok(Math.abs(bone.position.length() - rest.position.length()) < 1e-6);
+                assert.ok(bone.quaternion.toArray().every(Number.isFinite));
+            }
+        }
+    }
+    rig.reset(); rig.poseHands(reference, { pose: 'pistol', custom });
+    const aim = [...rig.rest.keys()].map(b => b.quaternion.toArray());
+    rig.reset(); rig.poseHands(reference, { pose: 'pistol', custom, pistolHold: samplePistolHold(pack, .3, 0) });
+    assert.deepEqual([...rig.rest.keys()].map(b => b.quaternion.toArray()), aim);
+    assert.equal(JSON.stringify(custom), before);
+});
 
 test('adapted imported actions preserve SWAT segment lengths and saved grip inputs', () => {
     const pack = JSON.parse(readFileSync(new URL('../public/assets/animations/view-actions.json', import.meta.url)));
@@ -108,6 +168,14 @@ test('first-person arm segments preserve source lengths', () => {
             assert.ok(Math.abs(actual / expected - 1) < 0.001, `${side} ${name} segment must not stretch`);
         }
     }
+});
+
+test('guided elbow direction changes the bend while retaining the hand target and bone lengths',()=>{
+ const {rig,reference}=makeViewRig(),custom=emptyPose();rig.reset();rig.poseHands(reference,{custom});
+ const elbow=rig.bones.LeftForeArm.getWorldPosition(new THREE.Vector3());custom.Left.elbowTarget=[.3,.1,0];rig.reset();rig.poseHands(reference,{custom});
+ assert.ok(rig.bones.LeftForeArm.getWorldPosition(new THREE.Vector3()).distanceTo(elbow)>.005);
+ assert.ok(rig.bones.LeftHand.getWorldPosition(new THREE.Vector3()).distanceTo(LEFT_GRIP)<.005);
+ for(const part of ['ForeArm','Hand'])assert.ok(Math.abs(rig.bones['Left'+part].position.length()-rig.rest.get(rig.bones['Left'+part]).position.length())<1e-6);
 });
 
 test('posed forearm cross-sections retain thickness rather than collapsing into a ribbon', () => {
@@ -193,4 +261,111 @@ test('actual SWAT wrist skin avoids near-180-degree folds while holding, reloadi
             }
         }
     }
+});
+
+test('loaded hand overrides apply immediately even when startup cached the same weapon and revision',()=>{
+ const {rig,reference}=makeViewRig();
+ const weapon={activeSlot:'primary',weaponGroup:reference,poseRevision:1,adsProgress:0};
+ let solves=0;const original=rig.poseHands.bind(rig);rig.poseHands=(...args)=>{solves++;return original(...args);};
+ rig.updateView(0,weapon);const initial=rig.bones.LeftHand.quaternion.clone();
+ weapon.poseOverrides=emptyPose();weapon.poseOverrides.Left.rotation=[0,.8,.09];
+ rig.updateView(0,weapon);const applied=rig.bones.LeftHand.quaternion.clone();assert.ok(initial.angleTo(applied)>.3);
+ assert.equal(solves,2);rig.updateView(0,weapon);assert.equal(solves,2,'unchanged holding pose still uses the cache');
+ rig.lastPose='pistol';rig.updateView(0,weapon);assert.ok(rig.bones.LeftHand.quaternion.angleTo(applied)<1e-7,'switching back must match the first loaded pose');
+});
+
+
+test('throwable grip remains attached through windup and release despite different authored item offsets',async()=>{
+ const {Throwables}=await import('../src/weapons/Throwables.js');
+ const {createGrenadeModel,applyGrenadePlacement}=await import('../src/models/GrenadeModel.js');
+ const {throwableMotion}=await import('../src/models/ThrowableMotion.js');
+ const {rig,reference}=makeViewRig(),model=createGrenadeModel('frag');reference.add(model);
+ const custom=emptyPose();custom.item={position:[-.14,-.04,-.11],rotation:[0,.2,0]};
+ rig.reset();rig.poseHands(reference,{pose:'grenade',custom});applyGrenadePlacement(model,0,'high',custom);
+ const equipment={held:{model},pending:null,weapon:{armsRig:rig,weaponGroup:reference}};
+ Throwables.prototype.syncGrip.call(equipment);const anchor=equipment.held.gripAnchor.clone();
+ equipment.pending={mode:'high'};
+ for(const mode of ['high','low'])for(const t of [.05,.25,.45,.55,.9,1]){
+  rig.reset();rig.poseHands(reference,{pose:'throw',throwProgress:t,throwMode:mode,custom});
+  applyGrenadePlacement(model,t,mode,{item:{position:[0,0,0],rotation:[0,0,0]}});
+  Throwables.prototype.syncGrip.call(equipment);
+  const actual=rig.bones.RightHand.matrixWorld.clone().invert().multiply(model.matrixWorld);
+  assert.ok(actual.elements.every((n,i)=>Math.abs(n-anchor.elements[i])<1e-6));
+ }
+ assert.ok(throwableMotion(.55).open>.9,'fingers open after release');
+ assert.ok(throwableMotion(.25,'high').offset.y>0&&throwableMotion(.25,'low').offset.y<0);
+});
+
+
+test('Militia frag wind-up preserves limb lengths, leg poses, and the palm attachment',async()=>{
+ const {createGrenadeModel}=await import('../src/models/GrenadeModel.js');
+ const {poseThrowableBody}=await import('../src/models/ThrowableMotion.js');
+ const {measurePalm,palmWorldPosition}=await import('../src/models/PalmGripFrames.js');
+ const rig=instantiateSwatRig(gltf.scene.getObjectByName('SWAT_Body')),model=createGrenadeModel('frag');
+ rig.attachAnimatedModel(model,'grenade','frag');
+ const lengths={};for(const side of ['Right','Left'])for(const part of ['ForeArm','Hand'])lengths[side+part]=rig.bones[side+part].position.length();
+ let anchor;
+ for(const p of [0,.12,.25,.35,.46,.6,.8,1]){
+  rig.reset();const legs=['Hips','LeftUpLeg','LeftLeg','RightUpLeg','RightLeg'].map(n=>rig.bones[n].quaternion.toArray());
+  poseThrowableBody(rig,{throwProgress:p,throwMode:'high'});rig.placeModelInHand(model,rig.grenadeGrip(model),'grenade');
+  assert.deepEqual(['Hips','LeftUpLeg','LeftLeg','RightUpLeg','RightLeg'].map(n=>rig.bones[n].quaternion.toArray()),legs);
+  for(const[name,length]of Object.entries(lengths))assert.ok(Math.abs(rig.bones[name].position.length()-length)<1e-6);
+  const hand=rig.bones.RightHand,relative=hand.matrixWorld.clone().invert().multiply(model.matrixWorld);
+  anchor??=relative.clone();assert.ok(relative.elements.every((n,i)=>Math.abs(n-anchor.elements[i])<.003),`p=${p}; relative error=${Math.max(...relative.elements.map((n,i)=>Math.abs(n-anchor.elements[i])))}`);
+  const palm=measurePalm(rig,'Right'),distance=palmWorldPosition(palm).distanceTo(model.getWorldPosition(new THREE.Vector3()));
+  assert.ok(Math.abs(distance-.052)<.004,`grenade meets palm: ${distance}`);
+ }
+});
+
+
+test('flash and smoke share frag arm motion with palm-calibrated canister grips',async()=>{
+ const {createGrenadeModel}=await import('../src/models/GrenadeModel.js');
+ const {poseThrowableBody}=await import('../src/models/ThrowableMotion.js');
+ const {measurePalm,palmWorldPosition}=await import('../src/models/PalmGripFrames.js');
+ const poses=new Map();
+ for(const type of ['frag','flash','smoke']){
+  const rig=instantiateSwatRig(gltf.scene.getObjectByName('SWAT_Body')),model=createGrenadeModel(type);rig.attachAnimatedModel(model,'grenade',type);
+  for(const p of [0,.25,.46,.7,1]){
+   rig.reset();poseThrowableBody(rig,{throwProgress:p,throwMode:'high'});rig.placeModelInHand(model,rig.grenadeGrip(model),'grenade');
+   const pose=['RightArm','RightForeArm','RightHand','LeftArm','LeftForeArm','LeftHand'].flatMap(n=>rig.bones[n].quaternion.toArray());
+   if(type==='frag')poses.set(p,pose);else assert.deepEqual(pose,poses.get(p));
+   const distance=palmWorldPosition(measurePalm(rig,'Right')).distanceTo(model.getWorldPosition(new THREE.Vector3()));
+   assert.ok(Math.abs(distance-(type==='frag'?.052:.036))<.004);
+  }
+ }
+});
+
+
+test('pistol holding keeps real palms on the grip and sleeve backs facing upward',async()=>{
+ const {pistolGripFrame}=await import('../src/models/PistolGrip.js');
+ const {measurePalm,palmWorldPosition}=await import('../src/models/PalmGripFrames.js');
+ const {rig,reference}=makeViewRig(),model=new THREE.Group();model.scale.setScalar(1.2);reference.add(model);
+ for(const lift of [0,.06]){
+  reference.position.y=lift;rig.reset();rig.poseHands(reference,{pose:'pistol',contactModel:model});
+  for(const side of ['Left','Right']){
+   const sample=pistolGripFrame(rig,side).sample,point=model.localToWorld(new THREE.Vector3(side==='Right'?.0175:-.044,-.038,side==='Right'?.016:.008));
+   assert.ok(palmWorldPosition(sample).distanceTo(point)<.006,'palm meets the pistol surface');
+   const hand=rig.bones[side+'Hand'],lower=rig.bones[side+'ForeArm'];
+   const dorsal=sample.normal.clone().negate().applyQuaternion(rig.rest.get(hand).quaternion).applyQuaternion(lower.getWorldQuaternion(new THREE.Quaternion()));
+   const axis=hand.getWorldPosition(new THREE.Vector3()).sub(lower.getWorldPosition(new THREE.Vector3())).normalize(),up=new THREE.Vector3(0,1,0);up.addScaledVector(axis,-up.dot(axis)).normalize();dorsal.addScaledVector(axis,-dorsal.dot(axis)).normalize();
+   assert.ok(dorsal.dot(up)>.99,'sleeve equipment stays on the upper side');
+  }
+ }
+});
+
+test('pistol reload keeps the trigger palm attached while the support hand moves',async()=>{
+ const {pistolGripFrame}=await import('../src/models/PistolGrip.js');
+ const {palmWorldPosition}=await import('../src/models/PalmGripFrames.js');
+ const {sequenceMotion,defaultReloadSequence,sampleReloadSequence,addTimelinePose}=await import('../src/studio/ReloadTimeline.js');
+ const {emptyLibrary}=await import('../src/studio/PoseLibrary.js');
+ const {rig,reference}=makeViewRig(),model=new THREE.Group();reference.add(model);
+ const base=emptyLibrary().poses['pistol:hip'],sequence=defaultReloadSequence(),left=[];
+ for(const progress of [.01,.2,.4,.6,.8,.99]){
+  rig.reset();const sample=sampleReloadSequence(sequence,progress*sequence.duration);
+  rig.poseHands(reference,{pose:'pistol',reload:progress,contactModel:model,custom:addTimelinePose(base,sample.pose),motion:sequenceMotion(progress)});
+  const point=model.localToWorld(new THREE.Vector3(.0175,-.038,.016));
+  assert.ok(palmWorldPosition(pistolGripFrame(rig,'Right').sample).distanceTo(point)<.006,`trigger grip at ${progress}`);
+  left.push(rig.bones.LeftHand.getWorldPosition(new THREE.Vector3()));
+ }
+ assert.ok(left.some(point=>point.distanceTo(left[0])>.05),'magazine hand retains reload travel');
 });

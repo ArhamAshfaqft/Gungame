@@ -1,6 +1,8 @@
+import {ReloadLocomotion} from './ReloadLocomotion.js';
 import * as THREE from 'three';
 import { smoothLoop, isLoopingMovement } from './AnimationLoops.js';
 import { composePistolCrouch, PISTOL_CROUCH_SOURCES } from './PistolCrouch.js';
+import {measurePalm} from './PalmGripFrames.js';
 
 let packPromise;
 let pistolPromise;
@@ -41,7 +43,8 @@ export function locomotionClip({ speed = 0, forward = 1, lateral = 0, isSprintin
 export function expandedRifleClip(state, available) {
     const base = locomotionClip(state);
     if (state.isGrounded === false) return base;
-    const { speed = 0, forward = 1, lateral = 0, isCrouching, isAiming } = state;
+    const { speed = 0, forward = 1, lateral = 0, isCrouching } = state;
+    const isAiming=state.isAiming||state.isFiring;
     let candidate = base;
     if (isCrouching && speed <= .15) candidate = 'rifleCrouchIdle';
     else if (isCrouching && speed > .15) candidate = Math.abs(lateral) > Math.abs(forward)
@@ -96,6 +99,7 @@ export class ShooterAnimator {
         pack = { ...pack, clips: pack.clips.map(smoothLoop) };
         pack = {...pack,clips:[...pack.clips,...composePistolCrouch(pack.clips)]};
         this.rig = rig; this.pack = pack; this.mixer = new THREE.AnimationMixer(rig.object);
+        this.reloadLocomotion=new ReloadLocomotion(this);
         this.phaseTracks = new Map(); this.sinceSwitch = 1;
         this.clips = new Map(); this.actions = new Map(); this.current = null; this.elapsed = 0; this.actionRemaining = 0;
         for (const data of pack.clips) {
@@ -122,6 +126,15 @@ export class ShooterAnimator {
                 .filter(([name]) => /^(Spine\d*|Neck|Head|LeftShoulder|RightShoulder|LeftArm|RightArm|LeftForeArm|RightForeArm|LeftHand.*|RightHand.*)$/.test(name))
                 .map(([name,bone]) => [name,bone.quaternion.clone()]));
         }
+        // Cache the stationary crouch torso in character space once. The sideways
+        // crouch clips have a deep forward fold that must not stack with peeking.
+        if(this.clips.has('rifleCrouchIdle')){
+            const previous=this.current;
+            this.sample('rifleCrouchIdle',0);rig.object.updateMatrixWorld(true);
+            const inverse=rig.object.getWorldQuaternion(new THREE.Quaternion()).invert();
+            this.crouchPeekTorso=new Map(['Spine','Spine1','Spine2','Neck','Head'].map(name=>[name,inverse.clone().multiply(rig.bones[name].getWorldQuaternion(new THREE.Quaternion()))]));
+            if(previous)this.sample(previous,0);
+        }
         this.holdingBlend = 0;
         for (const action of this.actions.values()) action.stop();
         this.current = null; rig.reset();
@@ -134,12 +147,31 @@ export class ShooterAnimator {
         const desired = rig.object.getWorldQuaternion(new THREE.Quaternion()).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI));
         rig.animationGrips ||= {};
         rig.animationGrips[kind] = rig.bones.RightHand.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(desired);
+        // Keep the imported support wrist's orientation relative to the weapon.
+        // Its bone axes differ from the procedural first-person hand basis.
+        rig.animationSupportGrips ||= {};
+        rig.animationSupportGrips[kind] = desired.clone().invert().multiply(rig.bones.LeftHand.getWorldQuaternion(new THREE.Quaternion()));
+        let hasSkin=false;rig.object.traverse(node=>{if(node.isSkinnedMesh)hasSkin=true;});
+        if(kind==='rifle'&&hasSkin){
+            rig.palmReferences ||= {};
+            try{
+                rig.palmReferences.rifle=Object.fromEntries(['Left','Right'].map(side=>[side,{
+                    sample:measurePalm(rig,side),
+                    handInGun:desired.clone().invert().multiply(rig.bones[side+'Hand'].getWorldQuaternion(new THREE.Quaternion())).normalize(),
+                }]));
+            }catch(error){
+                // Optional grip calibration must not disable the imported animation
+                // controller on a different character with an unmapped hand mesh.
+                rig.palmReferences.rifle=null;rig.palmMeasurementError=error.message;
+            }
+        }
         if (kind === 'rifle') rig.animationGrip = rig.animationGrips.rifle;
     }
     play(id, { fade = 0.2, once = false, speed = 1 } = {}) {
         const action = this.actions.get(id); if (!action) return false;
         if (id === this.current && !once) { action.timeScale = THREE.MathUtils.damp(action.timeScale, speed, 8, this.lastDelta || 1 / 60); return true; }
         const previous = this.actions.get(this.current);
+        if(id==='reload'&&this.current!=='reload')this.reloadLocomotion.start(this.current,previous?.time||0);
         const phase = previous && !once && isLoopingMovement(id) && isLoopingMovement(this.current) ? this.matchPhase(id, this.current, previous.time) : 0;
         // Retire old fades so paused/retargeted characters keep a bounded active action count.
         for (const candidate of this.actions.values()) if (candidate !== previous && candidate !== action) candidate.stop();
@@ -197,15 +229,16 @@ export class ShooterAnimator {
         this.lastDelta = delta; this.sinceSwitch += delta;
         const pistol = (state.equipment || this.rig.animatedKind) === 'pistol' && this.clips.has('pistolIdle');
         const crouched = !!state.isCrouching;
+        const reloading=!!state.isReloading||(this.current==='reload'&&this.actionRemaining>0);
         const postureAction=/^(rifle|pistol)(StandToCrouch|CrouchToStand)$/.test(this.current || '');
         if(postureAction && ((state.speed || 0)>.4 || state.isGrounded===false))this.actionRemaining=0;
-        if (pistol && this.wasCrouching !== undefined && crouched !== this.wasCrouching) {
+        if (!reloading && pistol && this.wasCrouching !== undefined && crouched !== this.wasCrouching) {
             const transition=crouched?'pistolStandToCrouch':'pistolCrouchToStand';
             if(this.clips.has(transition)){
                 if((state.speed||0)<.4&&state.isGrounded!==false)this.play(transition,{once:true,fade:.2,speed:this.clips.get(transition).duration/.6});
             }else this.trigger(crouched ? 'pistolStandToKneel' : 'pistolKneelToStand');
         }
-        if(!pistol && this.wasCrouching!==undefined && crouched!==this.wasCrouching && (state.speed || 0)<.4 && state.isGrounded!==false){
+        if(!reloading && !pistol && this.wasCrouching!==undefined && crouched!==this.wasCrouching && (state.speed || 0)<.4 && state.isGrounded!==false){
             const id=crouched?'rifleStandToCrouch':'rifleCrouchToStand';
             if(this.clips.has(id))this.play(id,{once:true,fade:.2,speed:this.clips.get(id).duration/.6});
         }
@@ -232,6 +265,7 @@ export class ShooterAnimator {
         this.restoreAuthoredPose();
         this.mixer.update(delta); this.captureAuthoredPose(); this.elapsed += delta;
         this.blendTransition(delta);
+        this.reloadLocomotion.apply(delta,state,pistol?expandedPistolClip(state,this.clips):expandedRifleClip(state,this.clips));
         this.stabilizeHoldingPose(delta,state,pistol);
         this.capturePresentedPose();
     }
@@ -242,7 +276,7 @@ export class ShooterAnimator {
             !state.clip && !this.actionRemaining && (state.equipment || this.rig.animatedKind || 'rifle') !== 'grenade';
         this.holdingBlend = THREE.MathUtils.damp(this.holdingBlend,enabled ? .85 : 0,12,delta);
         if (this.holdingBlend < .001 || this.actionRemaining) return;
-        const ready = !pistol && !state.isAiming && this.holdingPoses.rifleReady;
+        const ready = !pistol && !state.isAiming && !state.isFiring && this.holdingPoses.rifleReady;
         this.aimBlend = THREE.MathUtils.damp(this.aimBlend ?? 1,ready ? 0 : 1,10,delta);
         const pose = this.holdingPoses[pistol ? 'pistol' : 'rifle']; if (!pose) return;
         for (const [name,rotation] of pose) {

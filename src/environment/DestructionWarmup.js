@@ -18,6 +18,7 @@ export async function warmDestruction(game){
  // are allocated only by the first coloured fragment. Warm both shader paths.
  scene.traverse(mesh=>{if(!mesh.isInstancedMesh)return;const proxy=new T.InstancedMesh(mesh.geometry,mesh.material,1);proxy.position.y=-10000;proxy.frustumCulled=false;proxy.setMatrixAt(0,new T.Matrix4());proxy.setColorAt(0,new T.Color(0xffffff));stage.add(proxy);instances.push(proxy);});
  for(const body of arena.liquids?.bodies||[]){const material=body.streamMaterial();add(material);}
+ if(game.equipment?.burstTemplate){const proxy=game.equipment.burstTemplate.clone();proxy.position.y=-10000;proxy.frustumCulled=false;stage.add(proxy);}
  arena.prepareRender?.(camera.position);
  const viewport=renderer.getViewport(new T.Vector4()),scissor=renderer.getScissor(new T.Vector4()),test=renderer.getScissorTest(),target=renderer.getRenderTarget(),override=scene.overrideMaterial;
  try{

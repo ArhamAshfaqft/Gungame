@@ -4,12 +4,19 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
+    "profile": "node scripts/profile-game.mjs",
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "host": "node scripts/host-private.mjs",
+    "server": "node server/index.mjs"
   },
   "dependencies": {
+    "@colyseus/core": "^0.18.26",
+    "@colyseus/sdk": "^0.18.9",
+    "@colyseus/ws-transport": "^0.18.4",
     "cannon-es": "^0.20.0",
+    "express": "^5.3.0",
     "three": "^0.170.0",
     "three-mesh-bvh": "^0.8.3"
   },

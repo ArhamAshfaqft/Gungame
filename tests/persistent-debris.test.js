@@ -3,6 +3,14 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {DebrisPool} from '../src/world/DebrisPool.js';
 
+test('a detached long chair leg rests horizontally rather than becoming an upright post',()=>{
+ const pool=new DebrisPool(new THREE.Scene(),new THREE.CylinderGeometry(1,.8,1,5),new THREE.MeshStandardMaterial(),2);
+ pool.spawn(new THREE.Vector3(0,.5,0),new THREE.Vector3(),new THREE.Matrix4().makeScale(.05,.5,.05),new THREE.Vector3(1,2,1),Infinity);
+ for(let i=0;i<600;i++)pool.update(1/60);
+ const p=pool.pieces[0],box=pool.shapeBounds.clone().applyMatrix4(new THREE.Matrix4().compose(p.position,p.rotation,new THREE.Vector3(1,1,1)).multiply(p.shape));
+ assert.ok(p.settled);assert.ok(box.max.y-box.min.y<.12);assert.ok(Math.abs(box.min.y)<.002);
+});
+
 test('retained rubble settles on upper floors, survives time and subsequent hits, and clears on reset',()=>{
  let floor=3.4;
  const pool=new DebrisPool(new THREE.Scene(),new THREE.BoxGeometry(.2,.07,.2),new THREE.MeshStandardMaterial(),2,{groundHeight:()=>floor});

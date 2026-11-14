@@ -16,7 +16,7 @@ export class Arena {
 
     initTextures() {
         const loadTex = (path, repeatX = 1, repeatY = 1) => {
-            const tex = this.textureLoader.load(path);
+            const tex = typeof document === 'undefined' ? new THREE.Texture() : this.textureLoader.load(path);
             if (path.includes('_c.')) tex.colorSpace = THREE.SRGBColorSpace;
             tex.anisotropy = 8;
             tex.wrapS = THREE.RepeatWrapping;
@@ -331,14 +331,17 @@ export class Arena {
         }
         // Large sector labels remain legible while sprinting.
         for (const [text, x, z, yaw] of [['SECTOR 07', 3.5, 7.08, 0], ['SNIPER RANGE', -69.9, 22, Math.PI / 2]]) {
-            const canvas = document.createElement('canvas');
+            const canvas = typeof document === 'undefined' ? null : document.createElement('canvas');
+            let tex = new THREE.Texture();
+            if (canvas) {
             canvas.width = 1024; canvas.height = 256;
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = '#172426'; ctx.fillRect(0, 0, 1024, 256);
             ctx.fillStyle = '#d1bc78'; ctx.fillRect(0, 0, 14, 256);
             ctx.font = 'bold 115px sans-serif'; ctx.textAlign = 'center';
             ctx.fillText(text, 520, 168);
-            const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace;
+            tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace;
+            }
             const sign = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.05), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }));
             sign.position.set(x, 2, z); sign.rotation.y = yaw;
             this.scene.add(sign);

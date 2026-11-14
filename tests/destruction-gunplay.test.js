@@ -72,6 +72,14 @@ test('pistol uses lighter damage through glass and against wood', () => {
     assert.equal(wood.room.door.damage, 34); assert.equal(wood.damage.length, 0);
 });
 
+test('assault rounds shatter glazing, retain reduced damage behind it, and accumulate damage in wood',()=>{
+ const glass=fixture(3.1,1.4);glass.weapon.switchWeapon('assault');glass.weapon.performRaycast();
+ assert.equal(glass.room.glassPanes.filter(pane=>pane.userData.shattered).length,1);assert.deepEqual(glass.damage,[29]);
+ glass.weapon.performRaycast();assert.deepEqual(glass.damage,[29,36],'an open window does not attenuate later rounds');
+ const wood=fixture(0,1.2);wood.weapon.switchWeapon('assault');wood.weapon.performRaycast();assert.equal(wood.room.door.damage,36);assert.equal(wood.damage.length,0,'intact wood initially protects the target');
+ wood.weapon.performRaycast();assert.ok(wood.damage.length>0||wood.room.door.damage>36,'subsequent rounds use existing holes or accumulate real damage');
+});
+
 test('distant pistol rounds transfer less damage to breakable panels and report range to surface effects',()=>{
  const {camera,weapon,room}=fixture(0,1.2);camera.position.z=-10;camera.lookAt(0,1.2,44);weapon.switchWeapon('pistol');
  const impacts=[];weapon.surfaceDamage={hit:(...args)=>impacts.push(args)};weapon.performRaycast();

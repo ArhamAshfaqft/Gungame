@@ -10,6 +10,7 @@ import {environmentOf} from '../environment/EnvironmentSystem.js';
 import {pipelineFor} from '../environment/DestructionPipeline.js';
 import {operation,markOperation,runOperation} from '../environment/GeometryJobs.js';
 import {dirtyShadowRegion} from '../environment/ShadowCache.js';
+import {WEAPONS} from '../weapons/WeaponProfiles.js';
 function markTexture(material){const size=64,data=new Uint8Array(size*size*4);for(let y=0;y<size;y++)for(let x=0;x<size;x++){const dx=(x-31.5)/31.5,dy=(y-31.5)/31.5,r=Math.hypot(dx,dy),a=Math.atan2(dy,dx),edge=.82+.08*Math.sin(a*9)+.045*Math.cos(a*17),i=(y*size+x)*4;const crater=r<.24;const ring=r>.28&&r<.7;const value=crater?8:material==='metal'?(ring?95:30):material==='wood'?(ring?91:37):(ring?64:28);data[i]=value;data[i+1]=material==='wood'?value*.69:value;data[i+2]=material==='wood'?value*.39:value;data[i+3]=r<edge?Math.round(255*Math.min(1,(edge-r)*10)):0;}const texture=new THREE.DataTexture(data,size,size);texture.colorSpace=THREE.SRGBColorSpace;texture.needsUpdate=true;return texture;}
 export class SurfaceDamage{
  constructor(scene,colliders,{retainMarks=false}={}){this.markLife=retainMarks?Infinity:75;this.scene=scene;this.colliders=colliders;this.shadowsDirty=false;this.marks=[];this.pools={};this.time=0;this.stress=new WeakMap();
@@ -67,7 +68,7 @@ export class SurfaceDamage{
  }
  *hitSteps(hit,slot,direction,{panel=false,distance=hit.distance||0,damage,energy,blast=false,blastOrigin=null}={},deferred=false){
   const mesh=hit.object;if(!mesh?.isMesh)return;if(!mesh.visible)return{penetrates:true,damageMultiplier:1,remainingEnergy:energy??projectileEnergy(slot,distance)};if(!deferred){mesh.userData.renderBatch?.detach(mesh);mesh.userData.motionBatch?.detach(mesh);}
-  if(mesh.userData.waterBody){mesh.userData.waterBody.impact(hit.point,damage??(slot==='primary'?125:34));return{penetrates:true,damageMultiplier:.82,remainingEnergy:(energy??projectileEnergy(slot,distance))*.82};}
+  if(mesh.userData.waterBody){mesh.userData.waterBody.impact(hit.point,damage??(WEAPONS[slot]?.bodyDamage||34));return{penetrates:true,damageMultiplier:.82,remainingEnergy:(energy??projectileEnergy(slot,distance))*.82};}
   if(mesh.userData.waterSystem){mesh.userData.waterSystem.splash(hit.point,damage??34);return{penetrates:true,damageMultiplier:.98,remainingEnergy:(energy??projectileEnergy(slot,distance))*.98};}
   const material=hitMaterial(mesh);mesh.updateWorldMatrix(true,false);
   const normal=hit.face?hit.face.normal.clone().applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(mesh.matrixWorld)).normalize():direction.clone().negate();
@@ -75,7 +76,7 @@ export class SurfaceDamage{
   if(mesh.userData.breakableLight){const lamp=mesh.userData.breakableLight;if(!lamp.broken){lamp.broken=true;for(const light of lamp.lights)light.intensity=0;mesh.visible=false;mesh.userData.isShootable=false;this.emit('glass',hit.point,normal,14,.025);this.emit('metal',hit.point,normal,8,.012);soundEngine.playGlassBreak();this.shadowsDirty=true;}return;}
   if(material==='glass'||material==='ceramic'&&mesh.geometry.type==='CylinderGeometry'){
    if(!panel&&mesh.userData.damageablePart){removeProp(mesh.userData.damageRoot||mesh,this.colliders);this.emit('glass',hit.point,normal,14,.025);soundEngine.playGlassBreak();this.shadowsDirty=true;}
-   environmentOf(mesh)?.hit(mesh,hit.point,direction,p.strength,{blast});
+   environmentOf(mesh)?.hit(mesh,hit.point,direction,p.strength,{blast,slot});
    return panel?undefined:penetrationResponse(material,surfaceThickness(mesh,normal.clone().transformDirection(mesh.matrixWorld.clone().invert())),energy??projectileEnergy(slot,distance),normal.dot(direction));
   }
   if(blast&&!panel){
@@ -149,7 +150,8 @@ export class SurfaceDamage{
    if(mesh.geometry.type==='BoxGeometry'&&kind==='paper'&&(yield operation('chip',mesh,[point,localNormal,.025+p.strength*.00025,Math.min(.04,thickness*.35)])))this.invalidateShadow(mesh);
    if(kind==='paper'&&mesh.userData.softDamage>=160){removeProp(mesh,this.colliders);this.invalidateShadow(mesh);}
   }
-  const response=penetrationResponse(physics,thickness,(energy??projectileEnergy(slot,distance,(damage??(slot==='primary'?125:34))/(slot==='primary'?125:34))),normal.dot(direction));
+  const baseDamage=WEAPONS[slot]?.bodyDamage||34;
+  const response=penetrationResponse(physics,thickness,(energy??projectileEnergy(slot,distance,(damage??baseDamage)/baseDamage)),normal.dot(direction));
   if(!panel&&!chipped&&mesh.visible&&kind==='wood'&&response.penetrates){
    const localDirection=direction.clone().transformDirection(mesh.matrixWorld.clone().invert());
    if(yield operation('puncture',mesh,[point,localDirection,thickness/Math.max(.03,Math.abs(normal.dot(direction))),energy??projectileEnergy(slot,distance)])){invalidateSupport(this.colliders);this.invalidateShadow(mesh);}
@@ -157,7 +159,7 @@ export class SurfaceDamage{
   if(!mesh.visible)removeProp(mesh,this.colliders);
   // Collision/support reactions belong to the geometry commit, never to the
   // later cosmetic decal job. A removed chair leg must tip the chair now.
-  environmentOf(mesh)?.hit(mesh,hit.point,direction,p.strength,{blast});
+  environmentOf(mesh)?.hit(mesh,hit.point,direction,p.strength,{blast,slot});
   entry.pending=false;entry.life=this.markLife;
   const pipeline=deferred&&pipelineFor(this.scene);
   if(!mesh.visible||entry.removed){removeSurfaceMark(entry);this.marks=this.marks.filter(mark=>mark!==entry);}

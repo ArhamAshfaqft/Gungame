@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,600;0,700;1,700&family=Oxanium:wght@500;700;800&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/src/style.css">
+    <link rel="stylesheet" href="/src/ui/tactical-hud.css">
 </head>
 <body>
     <!-- Game 3D Canvas -->
@@ -79,7 +80,13 @@
 
     <!-- Esports In-Game HUD -->
     <div id="hud">
-        <div id="health-panel">HP <span id="health-value">100</span></div>
+        <div id="match-bar" aria-label="Match status">
+            <div class="match-team defenders"><div id="defender-profiles" class="player-profiles"></div><svg class="team-role" aria-label="Defenders"><use href="#hud-defend"/></svg><span id="defenders-score" class="team-score">0</span></div>
+            <div class="match-clock"><span id="round-timer">00:00</span><small id="round-label">ROUND 1</small></div>
+            <div class="match-team attackers"><span id="attackers-score" class="team-score">0</span><svg class="team-role" aria-label="Attackers"><use href="#hud-attack"/></svg><div id="attacker-profiles" class="player-profiles"></div></div>
+        </div>
+        <div id="health-panel" aria-label="Player health"><div class="health-numbers"><span id="health-value">100</span><span class="health-max">/ <span id="health-max">100</span></span><svg class="stance-icon" aria-hidden="true"><use id="stance-icon-use" href="#hud-standing"/></svg></div><div class="health-track"><div id="health-fill"></div></div></div>
+        <div id="compass-panel" aria-label="Compass"><div class="compass-pointer"></div><div id="compass-dial"><span class="north">N</span><span class="east">E</span><span class="south">S</span><span class="west">W</span></div><div class="compass-centre"></div><span id="compass-heading">N 000°</span></div>
         <!-- Top Right Kill Feed -->
         <div id="killfeed"></div>
 
@@ -111,24 +118,19 @@
             </div>
         </div>
 
-        <!-- Bottom Right: Weapon & Ammo Counter -->
-        <div id="ammo-panel">
-            <div class="weapon-name" id="weapon-name">M98B // .338</div>
-            <div class="ammo-row">
-                <span id="ammo-val">5</span>
-                <span id="ammo-res">/ 35</span>
-            </div>
-            <div class="ammo-mode" id="weapon-mode">BOLT ACTION</div>
-        </div>
     </div>
-
-    <div id="loadout-panel">
-        <div class="weapon-slots"><span id="slot-primary" class="selected">1 · SNIPER</span><span id="slot-pistol">2 · M9 PISTOL</span></div>
+    <div id="tactical-equipment" aria-label="Weapons and equipment">
         <div class="utility-slots">
-            <span id="utility-frag" class="selected">3 · FRAG <b id="count-frag">2</b></span>
-            <span id="utility-flash">4 · FLASH <b id="count-flash">2</b></span>
-            <span id="utility-smoke">5 · SMOKE <b id="count-smoke">2</b></span>
+            <span id="utility-frag" aria-label="Frag grenade, key 3"><kbd>3</kbd><svg><use href="#hud-frag"/></svg><b id="count-frag">2</b></span>
+            <span id="utility-flash" aria-label="Flash grenade, key 4"><kbd>4</kbd><svg><use href="#hud-flash"/></svg><b id="count-flash">2</b></span>
+            <span id="utility-smoke" aria-label="Smoke grenade, key 5"><kbd>5</kbd><svg><use href="#hud-smoke"/></svg><b id="count-smoke">2</b></span>
         </div>
+        <div id="ammo-panel"><div class="weapon-name" id="weapon-name">M98B // .338</div><div class="ammo-row"><kbd id="active-weapon-key">1</kbd><svg class="active-weapon-icon"><use id="active-weapon-icon-use" href="#hud-sniper"/></svg><span id="ammo-val">5</span><span id="ammo-res">/ 35</span></div><div class="ammo-status"><span id="weapon-mode">BOLT ACTION</span><span id="reload-hint">R · RELOAD</span></div><div class="reload-track"><div id="reload-fill"></div></div></div>
+        <div id="loadout-panel"><div class="weapon-slots">
+            <span id="slot-primary" class="selected"><kbd>1</kbd><svg><use href="#hud-sniper"/></svg><span class="slot-name">M98B</span><b id="slot-ammo-primary">5 <small>35</small></b></span>
+            <span id="slot-pistol"><kbd>2</kbd><svg><use href="#hud-pistol"/></svg><span class="slot-name">M9</span><b id="slot-ammo-pistol">15 <small>45</small></b></span>
+            <span id="slot-assault"><kbd>6</kbd><svg><use href="#hud-rifle"/></svg><span class="slot-name">M4A1</span><b id="slot-ammo-assault">30 <small>120</small></b></span>
+        </div></div>
         <div class="loadout-hint" id="loadout-hint">3 / 4 / 5 · EQUIP GRENADE</div>
     </div>
 
@@ -139,7 +141,7 @@
             <div class="subtitle">TACTICAL BREACHING RANGE // MOVE · LISTEN · PEEK</div>
 
             <div class="movement-guide">
-                <div class="guide-item"><span class="key">1 / 2</span><span class="desc">Sniper / M9 pistol</span></div>
+                <div class="guide-item"><span class="key">1 / 2 / 6</span><span class="desc">Sniper / M9 / M4A1 (hold fire)</span></div>
                 <div class="guide-item"><span class="key">3 / 4 / 5 · G</span><span class="desc">Equip frag / flash / smoke · G equips last</span></div>
                 <div class="guide-item"><span class="key">RMB · LMB</span><span class="desc">Grenade: pull pin · High throw (6 sec fuse)</span></div>
                 <div class="guide-item"><span class="key">ALT + LMB</span><span class="desc">Grenade: low toss (or RMB again after pin)</span></div>
@@ -153,7 +155,7 @@
                 </div>
                 <div class="guide-item">
                     <span class="key">SPACE</span>
-                    <span class="desc">Short jump (controlled movement)</span>
+                    <span class="desc">Jump / vault cleared windows (move forward + Space)</span>
                 </div>
                 <div class="guide-item">
                     <span class="key">Q / E</span>

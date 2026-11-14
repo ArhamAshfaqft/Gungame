@@ -1,3 +1,4 @@
+import {GraphicsSettings} from './ui/GraphicsSettings.js';
 import { updateShadowCache } from './environment/ShadowCache.js';
 import { warmDestruction } from './environment/DestructionWarmup.js';
 import * as THREE from 'three';
@@ -13,12 +14,21 @@ import { Settings } from './ui/Settings.js';
 import { soundEngine } from './audio/SoundEngine.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { ThirdPersonView } from './player/ThirdPersonView.js';
+import { TripoPlayer } from './player/TripoPlayer.js';
+import { IdleComparison } from './player/IdleComparison.js';
+import { PoseInspector } from './player/PoseInspector.js';
+import { installStudioPlayBridge } from './studio/StudioPlayBridge.js';
+import { watchProjectForWeapon } from './studio/ProjectPoses.js';
 import { connectGamePoseSync } from './studio/PoseSync.js';
 import {EffectComposer} from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import {RenderPass} from 'three/examples/jsm/postprocessing/RenderPass.js';
-import {SSAOPass} from 'three/examples/jsm/postprocessing/SSAOPass.js';
+import {WorldSSAOPass} from './environment/WorldSSAOPass.js';
+import {SmokeVolumePass} from './environment/SmokeVolumePass.js';
 import {OutputPass} from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SurfaceDamage } from './world/SurfaceDamage.js';
+import {withWorldSeed} from './multiplayer/Protocol.js';
+import {WorldSync} from './multiplayer/WorldSync.js';
+import {multiplayerMenu} from './multiplayer/MultiplayerMenu.js';
 
 class FastSnipeGame {
     constructor() {
@@ -29,6 +39,7 @@ class FastSnipeGame {
         this.initThree();
         this.initGame();
         this.initEvents();
+        multiplayerMenu(this,this.networkWorld);
 
         this.clock = new THREE.Clock();
         this.animate = this.animate.bind(this);
@@ -62,6 +73,8 @@ class FastSnipeGame {
     initGame() {
         // 1. World & Lighting
         this.mapId=new URLSearchParams(window.location.search).get('map')==='training'?'training':'villa';
+        this.networkMode=new URLSearchParams(location.search).get('multiplayer')==='1';
+        const buildWorld=()=>{
         if(this.mapId==='villa'){this.arena=new VillaMap(this.scene);this.room=this.arena;}else{
         this.arena = new Arena(this.scene);
         this.room = new TrainingRoom(this.scene, this.arena.colliders, {
@@ -70,6 +83,9 @@ class FastSnipeGame {
         });
 
         }
+        };
+        if(this.networkMode)withWorldSeed(buildWorld);else buildWorld();
+        if(this.networkMode)this.networkWorld=new WorldSync(this.scene,this.arena,this.room);
 
         // 2. Player Movement
         this.movement = new MovementController(this.camera, this.canvas);
@@ -96,14 +112,16 @@ class FastSnipeGame {
             const target=new THREE.WebGLRenderTarget(window.innerWidth,window.innerHeight,{type:THREE.HalfFloatType,samples:2});
             this.composer=new EffectComposer(this.renderer,target);
             this.worldPass=new RenderPass(this.scene,this.camera);this.composer.addPass(this.worldPass);
-            this.ambientOcclusion=new SSAOPass(this.scene,this.camera,window.innerWidth,window.innerHeight,12);
+            this.ambientOcclusion=new WorldSSAOPass(this.scene,this.camera,window.innerWidth,window.innerHeight,12);
             this.ambientOcclusion.kernelRadius=.6;this.ambientOcclusion.minDistance=.0003;this.ambientOcclusion.maxDistance=.025;
-            this.composer.addPass(this.ambientOcclusion);this.composer.addPass(new OutputPass());
+            this.composer.addPass(this.ambientOcclusion);
+            this.smokePass=new SmokeVolumePass(this.ambientOcclusion.normalRenderTarget.depthTexture);this.smokePass.warm(this.renderer);this.composer.addPass(this.smokePass);
+            this.composer.addPass(new OutputPass());
             this.resizeEffects();
         }
 
         // 4. Enemy Bots
-        this.botManager = new BotManager(this.scene, this.arena.colliders,{spawnPoints:this.arena.botSpawns,persistDeaths:this.arena.id==='villa'});
+        this.botManager = this.networkMode ? {bots:[],ready:true,update(){}} : new BotManager(this.scene, this.arena.colliders,{spawnPoints:this.arena.botSpawns,persistDeaths:this.arena.id==='villa'});
         if(this.arena.id==='villa'){
             const reset=document.createElement('button');reset.id='reset-villa';reset.textContent='RESET VILLA / NEW ROUND';
             reset.title='Restore the villa, clear bodies and rubble, and respawn opponents. Saved studio poses are kept.';
@@ -113,17 +131,27 @@ class FastSnipeGame {
             colliders: this.arena.colliders, room: this.room, bots: this.botManager,
         });
 
+        this.equipment.volumetricSmoke=!!this.smokePass;
+        this.equipment.detonationEffects.warm(this.renderer,this.camera);
+
         // 5. HUD & UI
         this.hud = new HUD();
         this.settings = new Settings(this.movement);
+        this.graphics = new GraphicsSettings(this);
         this.thirdPerson = new ThirdPersonView(this.scene,this.camera,this.movement,this.weapon,this.equipment,this.arena.colliders);
         this.viewButton = document.createElement('button'); this.viewButton.id = 'camera-toggle';
         this.viewButton.textContent = 'Loading character…'; this.viewButton.disabled = true;
         document.body.append(this.viewButton);
         this.viewButton.onclick = () => { this.toggleView(); this.viewButton.blur(); };
+        this.poseInspector = new PoseInspector(this);
+        this.idleComparison = new IdleComparison(this);
+        this.tripoPlayer = new TripoPlayer(this);
+        this.weapon.visualMuzzlePosition=slot=>this.thirdPerson.usesChaseCamera?this.thirdPerson.muzzlePosition(slot):this.weapon.firstPersonMuzzlePosition(slot);
+        this.weapon.aimingCamera=()=>this.thirdPerson.usesChaseCamera?this.thirdPerson.camera:this.camera;
+
         if(this.mapId==='villa'){
             this.graphicsWarming=true;this.btnPlay.disabled=true;const label=this.btnPlay.textContent;this.btnPlay.textContent='PREPARING DESTRUCTION…';
-            this.graphicsReady=warmDestruction(this).then(result=>{this.graphicsWarmup=result;}).catch(error=>{console.error('Destruction preparation failed.',error);}).finally(()=>{this.graphicsWarming=false;this.btnPlay.disabled=false;this.btnPlay.textContent=label;});
+            this.graphicsReady=warmDestruction(this).then(result=>{this.graphicsWarmup=result;}).catch(error=>{console.error('Destruction preparation failed.',error);}).finally(()=>{this.graphicsWarming=false;this.btnPlay.disabled=this.networkMode&&!this.multiplayer?.connected;this.btnPlay.textContent=this.networkMode?(this.multiplayer?.connected?'ENTER PRIVATE MATCH':'CONNECT TO A ROOM FIRST'):label;});
         }
         this.thirdPerson.ready.then(() => { this.viewButton.disabled = false; this.viewButton.textContent = 'V · Third person'; }).catch(error => { console.error('Player character failed to load.',error); this.viewButton.textContent = 'Character unavailable'; });
     }
@@ -131,7 +159,7 @@ class FastSnipeGame {
     resizeEffects(){
         if(!this.composer)return;
         this.composer.setSize(window.innerWidth,window.innerHeight);
-        this.ambientOcclusion.setSize(Math.max(1,Math.floor(window.innerWidth*.65)),Math.max(1,Math.floor(window.innerHeight*.65)));
+        this.ambientOcclusion.setSize(Math.max(1,Math.floor(window.innerWidth*(this.graphics?.config.scale||.85)*.65)),Math.max(1,Math.floor(window.innerHeight*(this.graphics?.config.scale||.85)*.65)));
     }
 
     initEvents() {
@@ -166,7 +194,7 @@ class FastSnipeGame {
 
         // Pointer Lock State Changes
         document.addEventListener('pointerlockchange', () => {
-            if (document.pointerLockElement === this.canvas) {
+            if (document.pointerLockElement === this.canvas || this.poseInspector.active) {
                 this.startScreen.classList.add('hidden');
             } else {
                 this.startScreen.classList.remove('hidden');
@@ -185,41 +213,67 @@ class FastSnipeGame {
     animate() {
         requestAnimationFrame(this.animate);
         if(this.graphicsWarming)return;
+        // Network snapshots continue independently; hidden tabs need no GPU frames.
+        if(this.multiplayer?.connected && document.hidden){this.clock.getDelta();return;}
 
-        const delta = Math.min(this.clock.getDelta(), 0.08);
+        const frameDelta=this.clock.getDelta();
+        const delta = Math.min(frameDelta, 0.08);
+        this.graphics?.update(frameDelta);
 
         // Update systems
-        if (this.movement.isLocked) {
+        if (this.movement.isLocked && !this.poseInspector.active) {
             soundEngine.combat.listener={position:this.movement.position,yaw:this.movement.yaw};
-            if (!this.movement.isDisabled) this.movement.update(delta, this.arena.colliders, this.arena.jumpPads);
+            if (!this.movement.isDisabled || this.multiplayer?.connected) {
+                if(this.multiplayer?.active)this.multiplayer.step(delta);
+                else this.movement.update(delta, this.arena.colliders, this.arena.jumpPads);
+            }
             this.equipment.update(delta);
             this.weapon.update(delta);
             this.room.update(delta, this.movement.position,{height:this.movement.currentHeight,speed:this.movement.getSpeed()});
             this.surfaceDamage.update(delta);
-            this.botManager.update(delta, this.movement.position);
+            if(!this.studioSession&&!this.networkMode)this.botManager.update(delta, this.movement.position);
             this.hud.update(this.movement, this.weapon, this.room, this.equipment);
             this.locationLabel.textContent=this.arena.location?.(this.movement.position)||'Training range';
         }
+
+        this.multiplayer?.update(delta);
 
         // Destruction and door movement invalidate cached shadows, not every gameplay frame.
         updateShadowCache(this.renderer,this.scene,this.room.shadowsDirty||this.surfaceDamage.shadowsDirty,this.room.motionShadowBounds);
         this.room.shadowsDirty=false;this.surfaceDamage.shadowsDirty=false;
         this.room.motionShadowBounds?.makeEmpty();
 
-        this.thirdPerson.update(this.movement.isLocked ? delta : 0);
+        if (this.poseInspector.active) this.poseInspector.update();
+        else this.thirdPerson.update(this.movement.isLocked ? delta : 0);
+        this.tripoPlayer.update(this.movement.isLocked ? delta : 0);
+        this.idleComparison.update(this.movement.isLocked ? delta : 0);
+        this.weapon.syncTracerOrigins();
         // Render
         this.renderer.autoClear = true;
-        const viewCamera=this.thirdPerson.enabled?this.thirdPerson.camera:this.camera;
+        this.multiplayer?.spectator?.update(delta);
+        const viewCamera=this.multiplayer?.spectator?.active?this.multiplayer.spectator.camera:this.thirdPerson.usesChaseCamera?this.thirdPerson.camera:this.camera;
         this.arena.prepareRender?.(viewCamera.position);
-        if(this.composer){this.worldPass.camera=viewCamera;this.ambientOcclusion.camera=viewCamera;this.composer.render(delta);}else this.renderer.render(this.scene,viewCamera);
+        this.smokePass?.update(this.equipment.clouds,viewCamera,delta);
+        if(this.composer){
+            this.worldPass.camera=viewCamera;this.ambientOcclusion.camera=viewCamera;
+            this.ambientOcclusion.depthOnly=!this.graphics?.config.ao;
+            this.ambientOcclusion.enabled=!!this.graphics?.config.ao||!!this.smokePass.enabled;
+            // Colour and SSAO normals use the same world transforms.
+            this.scene.updateMatrixWorld();
+            const autoUpdate=this.scene.matrixWorldAutoUpdate;
+            this.scene.matrixWorldAutoUpdate=false;
+            try{this.composer.render(delta);}finally{this.scene.matrixWorldAutoUpdate=autoUpdate;}
+        }else this.renderer.render(this.scene,viewCamera);
         this.renderer.autoClear = false;
         this.renderer.clearDepth();
-        if (!this.thirdPerson.enabled) this.renderer.render(this.weapon.viewmodelScene, this.weapon.viewmodelCamera);
+        if (!this.multiplayer?.spectator?.active && !this.thirdPerson.usesChaseCamera && (!this.thirdPerson.usesBodyFirstPerson||this.thirdPerson.aimingThroughSights)) this.renderer.render(this.weapon.viewmodelScene, this.weapon.viewmodelCamera);
     }
 }
 
 // Boot game when DOM is loaded
 window.addEventListener('DOMContentLoaded', () => {
     const game = new FastSnipeGame();
+    installStudioPlayBridge(game);
+    watchProjectForWeapon(game.weapon);
     if (import.meta.env.DEV) window.__fastSnipe = game;
 });

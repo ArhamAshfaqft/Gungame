@@ -1,10 +1,13 @@
 import * as THREE from 'three';
 import {DecalGeometry} from 'three/examples/jsm/geometries/DecalGeometry.js';
+import {decalSource} from './DecalSource.js';
 export const surfaceRevision=mesh=>`${mesh.geometry.uuid}:${mesh.geometry.attributes.position.version}:${mesh.geometry.index?.version??0}`;
 export function projectSurfaceMark(entry){
  const {mesh,decal}=entry,motion=decal.userData.motionBatch;motion?.detach(decal);mesh.updateWorldMatrix(true,false);
  const point=mesh.localToWorld(entry.local.clone()),rotation=mesh.getWorldQuaternion(new THREE.Quaternion()).multiply(entry.rotation);
- const geometry=new DecalGeometry(mesh,point,new THREE.Euler().setFromQuaternion(rotation),entry.size);
+ const source=decalSource(mesh,point,rotation,entry.size);
+ const geometry=new DecalGeometry(source,point,new THREE.Euler().setFromQuaternion(rotation),entry.size);
+ if(source!==mesh)source.geometry.dispose();
  // Decals are real surface triangles, clipped to existing material, not floating
  // quads. Parent them to the damaged object so doors carry their marks naturally.
  const p=geometry.attributes.position,n=geometry.attributes.normal,world=new THREE.Vector3();

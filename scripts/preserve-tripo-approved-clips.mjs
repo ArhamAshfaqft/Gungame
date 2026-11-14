@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+function read(path){const b=fs.readFileSync(path),n=b.readUInt32LE(12);return {json:JSON.parse(b.subarray(20,20+n)),bin:b.subarray(28+n,28+n+b.readUInt32LE(20+n))};}
+const path='public/assets/comparison/tripo-playable.glb',current=read(path),approved=read('blender-assets/tripo-approved-poses.glb');
+const chunks=[current.bin];let size=current.bin.length;const views=new Map(),accessors=new Map();
+function view(id){if(views.has(id))return views.get(id);const original=approved.json.bufferViews[id];if(original.buffer!==0||original.extensions)throw Error('Unsupported approved buffer view');const pad=(4-size%4)%4;if(pad){chunks.push(Buffer.alloc(pad));size+=pad;}const data=approved.bin.subarray(original.byteOffset||0,(original.byteOffset||0)+original.byteLength),target=current.json.bufferViews.length;current.json.bufferViews.push({...original,buffer:0,byteOffset:size});chunks.push(data);size+=data.length;views.set(id,target);return target;}
+function accessor(id){if(accessors.has(id))return accessors.get(id);const original=approved.json.accessors[id];if(original.sparse)throw Error('Unexpected sparse animation');const target=current.json.accessors.length;current.json.accessors.push({...original,bufferView:view(original.bufferView)});accessors.set(id,target);return target;}
+for(const name of ['Tripo_Idle','Tripo_Peek','Tripo_PeekOther']){
+ const animation=structuredClone(approved.json.animations.find(a=>a.name===name));
+ for(const sampler of animation.samplers){sampler.input=accessor(sampler.input);sampler.output=accessor(sampler.output);}
+ for(const channel of animation.channels){const oldName=approved.json.nodes[channel.target.node].name,index=current.json.nodes.findIndex(n=>n.name===oldName);if(index<0)throw Error('Missing '+oldName);channel.target.node=index;}
+ const index=current.json.animations.findIndex(a=>a.name===name);current.json.animations[index]=animation;
+}
+current.json.buffers=[{byteLength:size}];const raw=Buffer.from(JSON.stringify(current.json)),json=Buffer.alloc(Math.ceil(raw.length/4)*4,32);raw.copy(json);const bytes=Buffer.concat(chunks),bin=Buffer.alloc(Math.ceil(bytes.length/4)*4);bytes.copy(bin);const result=Buffer.alloc(28+json.length+bin.length);result.writeUInt32LE(0x46546c67,0);result.writeUInt32LE(2,4);result.writeUInt32LE(result.length,8);result.writeUInt32LE(json.length,12);result.writeUInt32LE(0x4e4f534a,16);json.copy(result,20);result.writeUInt32LE(bin.length,20+json.length);result.writeUInt32LE(0x004e4942,24+json.length);bin.copy(result,28+json.length);fs.writeFileSync(path,result);console.log('Preserved approved idle and both peek tracks byte-for-byte.');

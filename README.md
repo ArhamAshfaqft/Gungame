@@ -1,12 +1,36 @@
 # Fast Snipe
 
-A browser-based, single-player sniper arena prototype built with Three.js.
+A browser tactical shooter built with Three.js, with single-player practice and a private multiplayer alpha.
+
+For private multiplayer, double-click **Host Multiplayer.cmd**, open the host URL
+printed in its window, and create a room. Friends on the same Wi-Fi open the LAN
+URL printed there and join with your room code. Up to four players; no hosting
+subscription. Keep the server window open. See [the multiplayer guide](docs/MULTIPLAYER.md)
+for setup, internet-connectivity requirements and current alpha limitations.
 
 ## Run
 
 Install dependencies with `npm install`, then use `npm run dev` and open the local URL Vite prints.
 Use `npm run build` for the production build and `npm run preview` to preview it.
 Run the movement and gunplay regression checks with `npm test`.
+
+Use `npm run profile -- --output profile.json` for a repeatable 1080p Chrome
+performance check covering the arrival court, study, a study explosion and recovery.
+It starts its own local server and reports the actual GPU, frame intervals, physics
+and support timings, and destruction errors. Chrome must be installed. Add
+`--uncapped` to measure available frame-time headroom without the frame-rate limit.
+These automated headless measurements do not guarantee displayed FPS in every room.
+Select a furnished-room frag test with `--room study`, `--room library`,
+`--room kitchen`, `--room bathroom` or `--room dining`. These tests use the actual
+frag detonation path, including player/bot exposure and the visible blast burst.
+
+Player water entry uses the supplied splash recording. Water footsteps use six
+short variations from the supplied walking recording, synchronized to foot
+contacts in either camera view. They replace dry boot steps while wading;
+standing still produces no new water steps. Bullet and grenade water impacts
+keep their separate procedural sounds. Runtime cues and source hashes are in
+`public/assets/audio/water/manifest.json`; regenerate with
+`python scripts/prepare-water-audio.py` (requires ffmpeg and the original MP3s).
 
 ## Controls
 
@@ -22,11 +46,12 @@ Run the movement and gunplay regression checks with `npm test`.
 - Hold right mouse: aim / scope
 - R: reload
 - 1 / 2: sniper rifle / M9 pistol
+- 6: M4A1 assault rifle; hold left mouse for automatic fire
 - 3 / 4 / 5: equip frag / flash / smoke in hand
 - G: equip the last selected grenade (two of each per loadout)
 - With grenade equipped: right mouse pulls the pin and starts a six-second fuse
 - Left mouse: high throw; Alt + left mouse: low toss (right mouse again also low-tosses)
-- 1 / 2 stows an unarmed grenade; live grenades must be thrown
+- 1 / 2 / 6 stows an unarmed grenade; live grenades must be thrown
 - Escape: pause and release mouse
 
 While the mouse is locked the game swallows Tab, Alt and Ctrl shortcuts, so browser focus changes (address bar, tab switching) cannot interrupt play.
@@ -35,7 +60,87 @@ The current mode uses seven respawning practice bots. It does not include multip
 
 ## Weapons and equipment
 
+The M4A1 uses a separate 30-round magazine and 120 reserve rounds, automatic fire
+at 600 rounds/minute, a holographic sight, and a 2.2-second reload. It deals 36 body or
+108 head damage before penetration losses. Its 5.56 projectile energy sits
+between the M9 and sniper rifle and uses the existing material damage, cover and
+penetration system. Release fire to stop; switching weapons, selecting a grenade,
+losing focus or pausing clears held fire. The M4A1 is available in first person,
+third person and Pose Studio, with separate saved poses and weapon placement.
+
+The M4 includes a rail-mounted holographic sight in gameplay and Studio, with a
+transparent window and red ring/dot reticle. The neutral ADS height and Studio
+sight-alignment anchors use its optical axis. The reticle projects the view axis
+onto the window and disappears outside the aperture; it needs no extra scene
+render. Third-person framing uses a closer 2.05 m shoulder offset (1.35 m when
+shoulder aiming), with 70° / 60° field of view and existing wall/floor clearance.
+
 ### Adapted first-person actions
+
+Running uses two distinct armed gaits. Normal running uses the complete
+`rifleRunReady` source. Sprinting uses `Running-new.fbx` for its hips, torso,
+shoulders, head and legs, with weapon-bearing arm tracks sampled from the armed
+run at a matched footfall phase. Studio lists this as **rifle sprint - natural
+body + phase-matched grip**. Regenerate with
+`node scripts/prepare-running-footwork.mjs` after the base rifle run pack, then
+`node scripts/prepare-foot-contacts.mjs` for footsteps.
+
+Directional jogging keeps its authored torso and leg animation; only the arms
+receive the armed carry, sampled from the active gait phase. Sprinting turns the
+body smoothly toward travel and retains the same complete sprint cycle through
+diagonal input. A bounded, filtered chest adjustment adds weapon-bearing balance
+while preserving source sway. Support-hand IK uses the animated elbow direction
+during running unless the user supplied an elbow target. Aiming, reloads,
+one-shot actions, crouching and airborne states bypass these running corrections.
+First-person hipfire/ADS/reload code and saved presets remain unchanged; hybrid
+first-person running is not enabled by this correction.
+
+To use a full-body fit directly in first person, select the weapon in Studio,
+enable **Use full-body pose in first person**, then **Save to game**. **View
+through eyes** previews the current full-body animation from eye level without
+changing any hand/weapon transforms. **Full body** returns to the outside camera.
+When enabled for a weapon, gameplay renders the same animated body, weapon,
+contacts and finger adjustments in either camera view; the separate first-person
+arm rig is not drawn. Head/neck triangles are hidden only in eye view and restored
+for third person. Linked rifles retain the raised holding stance in both views.
+The choice is saved per weapon. Turning it off restores the existing independent
+first-person setup; saved poses are not overwritten. Check weapon visibility and
+sight alignment in eye view while making the full-body fit.
+
+Full-body mode has separate **Ready / hipfire** and **Aiming** fits, selected by
+the Pose dropdown in either outside or eye view. Each fit stores weapon placement,
+both hand/arm adjustments, fingers, thumb and marked contacts. Gameplay blends
+between the two with ADS progress in both cameras. Existing full-body saves seed
+both fits from their previous placement, retaining their appearance until edited.
+The legacy third-person maps remain the ready fit; `thirdPersonAim` stores the
+independent aiming fit. Manual first-person presets remain separate and intact.
+
+Easy weapon setup's Trigger hand and Support hand steps include **Connect palm
+to gun**. Click **Mark gun**, select a visible gun surface, then **Mark palm**
+and select the matching hand surface. Orbit first to expose the palm; camera
+controls pause while choosing a point. **Connect hand** saves a persistent
+weapon-local contact and hand-bone-local contact. IK keeps the points together
+without stretching the arm, while wrist controls set the palm direction. The
+nearby gap readout reports unreachable contacts; move the shoulder or choose a
+closer mark. **Disconnect** restores free hand positioning. Connections save
+with the selected weapon, hand, stance and view; they release during reloads
+and draw actions. Both first-person and full-body fits support marking.
+
+The main finger controls are **Finger wrap** (middle/ring/little), **Index /
+trigger curl**, and separate **Thumb curl**, **Thumb spread**, and **Thumb turn**.
+Positive curl bends toward the palm; negative curl opens the fingers. Individual
+fingers and base/middle/tip corrections remain under **Advanced**.
+
+The M9's non-aiming holding base uses the ambient frames (234–264 at 30 FPS)
+from DJMaesen's CC BY 4.0 `animated pistol`. Wrist, elbow and individual finger
+poses are retargeted to the SWAT rig and existing M9; the 59 KB runtime export
+is `public/assets/animations/pistol-hold.json`. It blends out with ADS and during
+reload/draw, leaving the saved aiming pose and current reload timeline intact.
+Studio uses the same base, with existing hand adjustments applied on top. The
+full-body animation system is unchanged. Regenerate with
+`node scripts/prepare-pistol-hold.mjs` using the local `animated_pistol.glb`.
+Creator credit, source and modification details are in
+`public/assets/animations/pistol-hold.NOTICE.txt`.
 
 Nine selected wrist-motion clips from the user-supplied CS Metal build are adapted to the SWAT arms:
 pistol and sniper draw/reload/fire plus grenade draw/pin/throw. The 52 KB animation-only file is
@@ -111,6 +216,25 @@ so 1.00x ADS moves the same number of pixels per mouse count as hipfire instead 
 
 ## Pose Studio
 
+For a guided firearm fit, choose the weapon and click **Easy weapon setup**.
+Follow the numbered steps to frame it, fit each hand, align sights and preview
+the result. **Bring palm onto grip** uses the model's grip markers as a starting
+point; the directional buttons move by 5 mm, or 1 mm with **Extra fine** enabled.
+Wrist controls and thumb/index controls expand only when needed. The hand target
+can also be dragged in the 3D view; IK moves the arm automatically.
+Inside either hand step, expand **Arm shape** for shoulder placement, elbow
+direction, upper-arm rotation and forearm rotation. Elbow direction steers the
+IK bend; joint rotations move their children and can displace the grip. Expand
+**Individual fingers** to curl any of the five fingers or adjust its base,
+middle and tip separately. These controls work in both first-person and full-body
+fits. New elbow targets default to zero so older saved fits retain their behavior.
+Use **First person** or **Full body** inside the guide to edit their separate
+fits. **Use this hand fit in ready + aiming** copies only the selected hand.
+Undo/redo and reset are scoped to your edits. **Save to game** persists the library
+through the existing save system. Reach warnings report arm reach, not guaranteed
+finger contact; inspect the grip from several angles. Other weapons are never
+automatically reset or fitted by opening the guide.
+
 Open `/studio.html` on the same game address, or use **Open Pose Studio** in the pause menu.
 Choose a weapon and ready/aiming stance, then adjust weapon placement, hand targets, wrist rotations,
 shoulder anchors, elbow directions, or the three curl joints on each finger. Positions use centimetres;
@@ -118,7 +242,7 @@ rotations use degrees. The preview uses the production SWAT arms, IK solver, wea
 and 62-degree viewmodel camera. **Inspect in 3D** adds orbit/pan/zoom and draggable target axes.
 Reload and bolt actions can be previewed, but this version edits base poses rather than animation keyframes.
 
-**Save to game** stores all four poses in this browser's local storage and updates game tabs on the same
+**Save to game** stores the firearm and throwable poses in this browser's local storage and updates game tabs on the same
 origin (including the port). **Export JSON** backs up or shares the current library; **Import JSON** validates
 and previews a library before saving. Exports can be supplied for inclusion as project defaults later;
 saving locally does not rewrite source files or change other players' presets. Undo/redo, per-pose reset,
@@ -168,8 +292,8 @@ jump, turns and grenade toss. It has an orbit camera, timeline scrubbing, playba
 and a support-hand IK toggle. Equipment follows the hand for compatibility inspection. These are clip
 preview controls. Full-body weapon placement now has separate saved position/rotation offsets per equipment,
 with numeric controls and paused move/rotate gizmos. The offsets follow the animated hand across clips,
-apply to live characters, and refresh on save/focus/resume. The trigger hand remains fixed; optional rifle
-support-hand IK can follow the adjusted weapon. **Reset third-person placement** resets only that equipment's
+apply to live characters, and refresh on save/focus/resume. Both firearm hands follow the adjusted grips. Arm reach fitting brings the weapon closer when necessary,
+with wrist-aware elbow targets and forearm twist distribution. Reload, throw and hit clips retain released-hand motion. **Reset third-person placement** resets only that equipment's
 body attachment. Undo/redo and JSON import/export include these offsets. Full-body joint correction editing
 is limited to the rifle support hand: **Full body → Left hand & arm** edits its weapon-local IK target,
 wrist rotation and finger curls. Keep support-hand IK enabled. A reset-to-fitted-grip button restores only
@@ -372,3 +496,11 @@ existing timber breach bays keep their layered appearance. Water reacts to hits,
 drains from breached tubs and spreads in bounded puddles that respect obstacles
 and floor openings. See `docs/ENVIRONMENT_SYSTEM.md` for map authoring, budgets,
 approximations and verification, and `docs/VILLA_DESIGN.md` for circulation rules.
+
+
+### Animation recovery
+
+The original third-person pose function and animation mixer have been recovered from the
+November 3 checkpoint `ad6775c`. Automatic grip fitting, palm reweighting, stable holding,
+and torso-clearance experiments are no longer used. Saved ready/aiming offsets and manual
+first-person poses remain available; existing pose storage is preserved.

@@ -5,6 +5,7 @@ import { loadSniperModel } from '../models/SniperModel.js';
 import { loadPistolModel } from '../models/PistolModel.js';
 import { soundEngine } from '../audio/SoundEngine.js';
 import { SkeletalRagdoll } from '../models/SkeletalRagdoll.js';
+import { BloodEffects } from '../world/BloodEffects.js';
 
 const materialsOf = mesh => Array.isArray(mesh.material) ? mesh.material : [mesh.material];
 
@@ -14,6 +15,7 @@ export class BotManager {
         this.bots = [];
         this.colliders = colliders;
         this.persistDeaths = persistDeaths;
+        this.bloodEffects = new BloodEffects(scene);
 
         this.spawnPoints = [
             new THREE.Vector3(-24, 3.75, 0),    // Catwalk left
@@ -60,11 +62,13 @@ export class BotManager {
         this.scene.add(root);
         const bot = new Bot(name, root, spawnPos, this.scene, this.colliders, rig);
         bot.persistDeath = this.persistDeaths;
+        bot.bloodEffects = this.bloodEffects;
         if(this.indoor)bot.patrolRadius=1.5;
         this.bots.push(bot);
     }
 
     update(delta, playerPos) {
+        this.bloodEffects.update(delta);
         for (const bot of this.bots) {
             bot.update(delta, playerPos);
         }
@@ -117,9 +121,11 @@ class Bot {
         });
     }
 
-    takeDamage(amount, isHeadshot, hitDirection,hitPoint=null,weapon='pistol') {
+    takeDamage(amount, isHeadshot, hitDirection,hitPoint=null,weapon='pistol',impact={}) {
         if (!this.isAlive) return;
 
+        this.bloodEffects?.wound(this,hitPoint,weapon,amount);
+        this.bloodEffects?.hit(hitPoint,hitDirection,weapon,amount,impact.distance||0,impact.targets);
         this.hp -= amount;
         if(this.hp>0)soundEngine.playPain(this.position);
         this.flashTime = 0.15;
@@ -149,17 +155,19 @@ class Bot {
     die(isHeadshot, hitDirection,hitPoint,weapon) {
         soundEngine.playDeath(this.position);
         this.isAlive = false;
+        this.bloodEffects?.death(this);
         this.respawnTimer = this.persistDeath ? Infinity : 5;
         if(this.rig)this.ragdoll=new SkeletalRagdoll(this.rig,this.colliders,hitDirection||new THREE.Vector3(),hitPoint?.isVector3?hitPoint:null,weapon==='primary'?1.8:weapon==='frag'?2.4:1);
 
         soundEngine.playKill();
 
         if (window.__recordKill) {
-            window.__recordKill(this.name, isHeadshot);
+            window.__recordKill(this.name, isHeadshot, weapon);
         }
     }
 
     respawn() {
+        this.bloodEffects?.clearWounds(this);
         this.ragdoll=null;this.rig?.reset();if(this.rig){if(this.rig.animator){this.rig.animator.authoredPose=null;this.rig.animator.presentedPose=null;}this.rig.hitKick=null;}
         this.isAlive = true;
         this.hp = this.maxHp;

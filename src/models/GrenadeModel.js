@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 
+import {throwableMotion} from './ThrowableMotion.js';
 const templates = new Map();
 export function grenadeModelPosition(throwProgress = 0, mode = 'high') {
-    const reach = Math.min(1, throwProgress / 0.4);
-    return [0.06, -0.02 + (mode === 'low' ? -0.06 : 0.14) * reach, 0.02 - (mode === 'low' ? 0.14 : 0.24) * reach];
+    return throwableMotion(throwProgress,mode).offset.add(new THREE.Vector3(.06,-.02,.02)).toArray();
 }
 export function applyGrenadePlacement(model, throwProgress = 0, mode = 'high', pose = null) {
     model.position.fromArray(grenadeModelPosition(throwProgress, mode));

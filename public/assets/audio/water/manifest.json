@@ -1,0 +1,72 @@
+{
+  "description": "Player water entry and foot-contact sounds; not bullet or grenade impacts.",
+  "provenance": "User-supplied recordings. No redistribution license asserted.",
+  "sources": [
+    {
+      "file": "freesound_community-splash-by-blaukreuz-6261.mp3",
+      "sha256": "4120614f354ba09bb8dc4501ab63057cc89639f723eb43d1536fc20dfbbe8414"
+    },
+    {
+      "file": "alex_jauk-walking-in-water-148426.mp3",
+      "sha256": "b6a94cb4fdb8bec34a0749766cfd7f49d97a11acc7da3570743f0b6a2358a611"
+    }
+  ],
+  "clips": [
+    {
+      "key": "waterEntry",
+      "file": "waterEntry.wav",
+      "source": "freesound_community-splash-by-blaukreuz-6261.mp3",
+      "sourceOffset": 0.04222,
+      "duration": 1.9258,
+      "gain": 0.66333
+    },
+    {
+      "key": "waterStep0",
+      "file": "waterStep0.wav",
+      "source": "alex_jauk-walking-in-water-148426.mp3",
+      "sourceOffset": 1.19,
+      "duration": 0.68,
+      "gain": 2.60108
+    },
+    {
+      "key": "waterStep1",
+      "file": "waterStep1.wav",
+      "source": "alex_jauk-walking-in-water-148426.mp3",
+      "sourceOffset": 3.94,
+      "duration": 0.68,
+      "gain": 2.764
+    },
+    {
+      "key": "waterStep2",
+      "file": "waterStep2.wav",
+      "source": "alex_jauk-walking-in-water-148426.mp3",
+      "sourceOffset": 5.04,
+      "duration": 0.68,
+      "gain": 2.42716
+    },
+    {
+      "key": "waterStep3",
+      "file": "waterStep3.wav",
+      "source": "alex_jauk-walking-in-water-148426.mp3",
+      "sourceOffset": 6.09,
+      "duration": 0.68,
+      "gain": 2.3095
+    },
+    {
+      "key": "waterStep4",
+      "file": "waterStep4.wav",
+      "source": "alex_jauk-walking-in-water-148426.mp3",
+      "sourceOffset": 8.24,
+      "duration": 0.68,
+      "gain": 2.24381
+    },
+    {
+      "key": "waterStep5",
+      "file": "waterStep5.wav",
+      "source": "alex_jauk-walking-in-water-148426.mp3",
+      "sourceOffset": 10.69,
+      "duration": 0.68,
+      "gain": 1.53413
+    }
+  ]
+}

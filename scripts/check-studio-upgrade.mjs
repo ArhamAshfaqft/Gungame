@@ -1,0 +1,17 @@
+import {chromium} from 'playwright';
+const b=await chromium.launch({channel:'chrome',headless:true});const p=await b.newPage({viewport:{width:1500,height:1000}});const errors=[];p.on('pageerror',e=>errors.push(e.message));
+await p.goto('http://127.0.0.1:5181/studio.html');await p.waitForFunction(()=>window.__poseStudio?.bodyRig?.animator&&document.querySelector('#loading').style.display==='none',{timeout:60000});
+await p.selectOption('#weapon','assault');await p.click('#third-person');
+console.log('initial',await p.evaluate(()=>({states:[...document.querySelector('#stance').options].map(o=>o.value),disabled:document.querySelector('#stance').disabled,clips:document.querySelector('#body-clip').options.length})));
+await p.selectOption('#body-clip','rifleCrouchIdle');await p.selectOption('#stance','fire');await p.click('[data-part="Left"]');
+console.log('controls',await p.locator('#controls').innerText());
+await p.click('#edit-peek');await p.selectOption('#peek-posture','crouch');await p.selectOption('#peek-side','right');await p.selectOption('#stance','aim');await p.selectOption('#peek-target','Left');
+console.log('peek',await p.locator('#stance-note').innerText());
+await p.screenshot({path:'E:/Cache/Temp/studio-upgrade-peek.png'});
+await p.click('#edit-peek');await p.selectOption('#body-clip','runBack');await p.selectOption('#stance','fire');
+await p.locator('summary').filter({hasText:'Animate with keyframes'}).click();
+await p.locator('#body-time').evaluate(e=>{e.value='0.2';e.dispatchEvent(new Event('input'));});await p.click('#animation-add-frame');await p.click('[data-part="Right"]');
+console.log('frames',await p.locator('#animation-frame').innerText());
+await p.click('#save');await p.waitForTimeout(300);
+console.log('saved',await p.evaluate(()=>JSON.parse(localStorage.getItem('fast-snipe-poses-v1')).animationEdits));
+console.log('errors',errors);await b.close();if(errors.length)process.exitCode=1;

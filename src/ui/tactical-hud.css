@@ -1,0 +1,81 @@
+/* Compact tactical display: clear centre, white combat readouts, coloured teams. */
+#hud-symbols{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
+#hud svg,#tactical-equipment svg{display:block;fill:currentColor}
+#match-bar{position:absolute;top:20px;left:50%;transform:translateX(-50%);display:flex;align-items:flex-start;gap:0;font-family:'Rajdhani',sans-serif;filter:drop-shadow(0 2px 5px #0006)}
+.match-team{display:flex;align-items:center;gap:9px;height:48px;padding:5px 10px;background:linear-gradient(90deg,#a7531880,#241d18df);border-top:2px solid #e9a154}
+.match-team.attackers{background:linear-gradient(90deg,#152330df,#235e9180);border-color:#62b5e8}
+.player-profiles{display:flex;gap:4px}
+.player-profile{position:relative;display:grid;place-items:center;width:32px;height:34px;background:#0c111a88;border-bottom:2px solid #e9a15488;color:#fff;font-size:25px;font-weight:700;line-height:1;clip-path:polygon(0 0,100% 0,100% 85%,85% 100%,0 100%)}
+.attackers .player-profile{border-color:#62b5e899}
+.player-profile.self{border-bottom-color:#fff}
+.player-profile.eliminated{opacity:.35}
+.player-profile.eliminated:after{content:'';position:absolute;width:30px;height:2px;background:#fff;transform:rotate(-45deg)}
+.team-role{width:21px;height:25px;color:#f2ae66}.attackers .team-role{color:#8ac7ef}
+.team-score{font-size:33px;font-weight:700;min-width:22px;text-align:center;color:#f6b26b}.attackers .team-score{color:#8ac7ef}
+.match-clock{min-width:90px;text-align:center;height:48px;padding:2px 12px;background:#111a23df}
+#round-timer{display:block;font:700 26px 'Rajdhani',sans-serif;line-height:28px;font-variant-numeric:tabular-nums;letter-spacing:1px}
+#round-label{display:block;font-size:9px;letter-spacing:1.5px;color:#e1e6eb;line-height:13px}
+#killfeed{position:absolute;right:24px;top:110px;margin:0}
+#health-panel{position:fixed;top:auto;bottom:36px;left:34px;width:162px;padding:0;border:0;background:none;text-shadow:0 2px 5px #0008;font-family:'Rajdhani',sans-serif}
+.health-numbers{display:flex;align-items:baseline;gap:3px;line-height:1}
+#health-value{font:700 42px 'Rajdhani',sans-serif;margin:0;letter-spacing:-1px;line-height:1}
+.health-max{font-size:17px;font-weight:700;color:#cdd5de;letter-spacing:0}
+.stance-icon{width:22px;height:28px;margin-left:auto;align-self:center}
+.health-track{height:6px;background:#ffffff38;margin-top:7px;position:relative}
+#health-fill{height:100%;background:#fff;width:100%;transform-origin:left;transition:transform .15s}
+.health-track:after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0,transparent calc(20% - 1px),#15202a9c calc(20% - 1px),#15202a9c 20%)}
+#health-panel.low-health #health-value{color:#ff8a73}#health-panel.low-health #health-fill{background:#ff8a73}
+#speed-panel{bottom:109px;left:34px;min-width:0;max-width:245px;padding:0;background:none;border:0;border-radius:0;backdrop-filter:none;display:flex;align-items:center;gap:5px;transform:none;color:#ecf0f4;text-shadow:0 2px 4px #000b}
+#speed-panel .speed-header{order:3;font-size:9px;letter-spacing:.4px}#speed-panel .speed-label{display:none}
+#speed-value{order:2;font:700 13px 'Rajdhani',sans-serif;margin:0;color:#fff}
+#movement-mode{order:1;font:700 11px 'Rajdhani',sans-serif;letter-spacing:1px;margin:0;padding-right:9px;max-width:180px}
+#speed-panel .speed-bar,#speed-panel .movement-tags{display:none}
+#map-location{top:auto;bottom:143px;left:50%;padding:0;background:none;color:#fff;font:600 12px 'Rajdhani',sans-serif;letter-spacing:.6px;text-align:center;text-shadow:0 2px 5px #000;white-space:nowrap;max-width:34vw;overflow:hidden;text-overflow:ellipsis}
+#compass-panel{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);width:94px;height:94px;border-radius:50%;background:#101d2880;border:1px solid #ffffff50;color:#fff;box-shadow:0 2px 10px #0002}
+#compass-dial{position:absolute;inset:0;border-radius:50%;transform:rotate(var(--compass-rotation,0deg));background:repeating-conic-gradient(#ffffff65 0deg 1deg,transparent 1deg 15deg);mask-image:radial-gradient(circle,transparent 57%,#000 58%);will-change:transform}
+#compass-dial span{position:absolute;font:700 10px 'Rajdhani',sans-serif}#compass-dial .north{top:2px;left:43px;color:#f6bd6a}#compass-dial .east{top:39px;right:4px}#compass-dial .south{bottom:2px;left:44px}#compass-dial .west{top:39px;left:3px}
+.compass-centre{position:absolute;inset:18px;border:10px solid #b9cddd80;border-radius:50%;border-bottom-color:#30465690;border-right-color:#30465690}
+.compass-pointer{position:absolute;top:-7px;left:41px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:8px solid #f4bf78;z-index:2}
+#compass-heading{position:absolute;top:40px;left:50%;transform:translateX(-50%);padding:2px 4px;background:#152431d9;font:700 10px 'Rajdhani',sans-serif;white-space:nowrap;letter-spacing:.5px}
+#tactical-equipment{position:fixed;bottom:30px;right:34px;width:256px;z-index:12;pointer-events:none;font-family:'Rajdhani',sans-serif;color:#fff;filter:drop-shadow(0 2px 4px #0005)}
+#tactical-equipment kbd{font:700 10px 'Rajdhani',sans-serif;display:inline-grid;place-items:center;min-width:15px;height:15px;border:1px solid currentColor;border-radius:1px;line-height:1}
+#tactical-equipment .utility-slots{display:flex;justify-content:flex-end;gap:7px;margin:0 0 8px}
+#tactical-equipment .utility-slots>span{display:flex;align-items:center;justify-content:center;gap:7px;flex:none;min-width:72px;height:31px;padding:3px 6px;border:0;border-bottom:2px solid transparent;border-radius:0;background:#14202bd1;color:#fff}
+#tactical-equipment .utility-slots svg{width:20px;height:23px}#tactical-equipment .utility-slots b{font-size:18px;margin:0;min-width:10px}
+#tactical-equipment .utility-slots .selected{background:#b5782ad9;border-bottom-color:#ffe0a5}#tactical-equipment .empty{opacity:.3}
+#ammo-panel{position:relative;bottom:auto;right:auto;min-width:0;padding:0;border:0;border-radius:0;background:none;backdrop-filter:none;text-align:left;transform:none}
+#ammo-panel .weapon-name{font:700 11px 'Rajdhani',sans-serif;letter-spacing:1px;color:#edf3f7;padding:0 0 4px;text-align:right}
+#ammo-panel .ammo-row{height:47px;background:#f3f4eff0;color:#101923;display:flex;align-items:center;justify-content:flex-start;gap:10px;margin:0;padding:0 12px 0 8px;border-left:3px solid #e6af61}
+#ammo-panel .active-weapon-icon{width:69px;height:28px;margin-right:auto}
+#ammo-val{font:700 36px 'Rajdhani',sans-serif;line-height:1;color:#101923;letter-spacing:-1px}
+#ammo-res{font:700 17px 'Rajdhani',sans-serif;color:#424b52;min-width:36px;letter-spacing:0}
+.ammo-status{display:flex;justify-content:space-between;align-items:center;background:#10202edb;min-height:20px;padding:2px 7px;font:600 9px 'Rajdhani',sans-serif;letter-spacing:1px}
+#reload-hint{color:#f6bc70;letter-spacing:.3px}#reload-hint[hidden]{display:none}
+.reload-track{height:2px;background:#ffffff21}#reload-fill{height:100%;background:#efb665;transform-origin:left;transform:scaleX(0)}
+#ammo-panel.low-ammo #ammo-val{color:#be4a30}#ammo-panel.reloading .ammo-row{border-color:#fff}
+#loadout-panel{position:static;bottom:auto;left:auto;transform:none;width:auto;font-size:12px;text-align:left;letter-spacing:0}
+#loadout-panel .weapon-slots{display:flex;flex-direction:column;gap:2px;margin:3px 0 0}
+#loadout-panel .weapon-slots>span{display:flex;align-items:center;gap:8px;flex:none;background:#152431c9;border:0;border-radius:0;padding:3px 8px;height:26px;color:#e5eaf0}
+#loadout-panel .weapon-slots>span.selected{display:none}
+#loadout-panel .weapon-slots svg{width:48px;height:20px}
+#loadout-panel .slot-name{padding:0;background:none;border:0;border-radius:0;flex:1;font-size:11px;color:#cdd5dd}
+#loadout-panel .weapon-slots b{font-size:17px;min-width:57px;text-align:right;letter-spacing:.3px}#loadout-panel .weapon-slots small{font-size:12px;font-weight:600;color:#b6c1ca;margin-left:8px}
+#tactical-equipment .loadout-hint{font-size:9px;letter-spacing:.5px;text-align:right;line-height:12px;margin-top:6px;color:#dae3ea}
+#interact-prompt{bottom:27%;border:0;border-radius:2px;font-size:12px;background:#101d28c9;letter-spacing:1.3px}
+@media(max-width:900px){#match-bar{transform:translateX(-50%) scale(.85);transform-origin:top center}.player-profile{width:27px}#tactical-equipment{right:20px;width:225px}#health-panel,#speed-panel{left:20px}#map-location{font-size:11px}}
+@media(max-width:600px){#match-bar{top:12px;transform:translateX(-50%) scale(.65)}#tactical-equipment{right:14px;bottom:20px;width:195px}#health-panel{left:14px;bottom:25px;width:105px}#health-value{font-size:32px}.health-max{font-size:13px}.stance-icon{width:16px}#speed-panel{left:14px;bottom:82px;max-width:120px}#movement-mode{font-size:9px;max-width:75px}#compass-panel{bottom:25px;width:72px;height:72px;transform:translateX(-50%) scale(.85)}#compass-dial{inset:0}#compass-dial .north{left:32px}#compass-dial .south{left:33px}#compass-dial .east,#compass-dial .west{top:30px}.compass-pointer{left:30px}.compass-centre{inset:13px;border-width:8px}#compass-heading{top:29px;font-size:9px}#map-location{bottom:115px;max-width:38vw;font-size:10px}#ammo-panel .ammo-row{gap:6px;padding-right:6px}#ammo-panel .active-weapon-icon{width:50px}#tactical-equipment .utility-slots{gap:3px}#tactical-equipment .utility-slots>span{min-width:61px;gap:4px;padding:2px 3px}#ammo-val{font-size:30px}#tactical-equipment .loadout-hint{font-size:8px}#camera-toggle{top:73px;right:14px;padding:6px 8px;font-size:10px}}
+@media(max-width:600px){#compass-panel{left:64px;bottom:112px;transform:translateX(-50%)}#map-location{left:64px;bottom:199px;max-width:110px}#camera-toggle{top:58px}#pose-inspector{top:94px;right:14px;padding:6px 8px;font-size:10px}}
+@media(max-width:420px){#match-bar{transform:translateX(-50%) scale(.6)}}
+
+/* Kill events carry their own weapon, so switching after a throw cannot mislabel it. */
+.kill-row{display:flex;align-items:center;gap:9px;font-size:14px;letter-spacing:.4px;padding:7px 11px;white-space:nowrap}
+.kill-weapon{display:inline-flex;align-items:center;gap:5px;color:#c3cdd6;font-size:10px;letter-spacing:.6px}
+.kill-weapon svg{width:48px;height:23px;fill:currentColor}
+.kill-row .victim{max-width:130px;overflow:hidden;text-overflow:ellipsis}
+.kill-row .headshot-badge{font-size:10px;border:1px solid #a98740;border-radius:3px;padding:2px 4px;color:#ffcf70;letter-spacing:.5px}
+
+.kill-row .killer{max-width:120px;overflow:hidden;text-overflow:ellipsis}
+.kill-weapon{gap:0;flex-shrink:0}
+.kill-weapon svg{width:58px;height:25px}
+.headshot-icon{display:inline-flex;align-items:center;flex-shrink:0;color:#ffcf70}
+.headshot-icon svg{width:23px;height:23px}

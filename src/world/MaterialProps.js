@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {boxSolid,subtractSolid,solidsGeometry} from './FractureSolid.js';
 import {invalidateSupport} from './SupportIndex.js';
 import {collisionVolumes} from '../environment/CollisionVolumes.js';
+const movingCollisions=new WeakMap();
 
 // A visual material can be overridden per part: e.g. a white mattress is cloth,
 // a coloured book is paper, and a green bottle is glass rather than foliage.
@@ -12,6 +13,7 @@ export function materialPart(mesh,material,options={}){
 }
 export function removeProp(mesh,colliders){
  for(const part of mesh.userData.damageParts||[mesh]){
+  movingCollisions.delete(part);
   part.userData.renderBatch?.detach(part);part.userData.motionBatch?.detach(part);part.visible=false;part.userData.isShootable=false;
   part.traverse(child=>{if(child===part||!child.isMesh||child.userData.looseItem)return;child.userData.renderBatch?.detach(child);child.userData.motionBatch?.detach(child);child.visible=false;});
   if(part.userData.contactShadow)part.userData.contactShadow.visible=false;
@@ -21,10 +23,18 @@ export function removeProp(mesh,colliders){
 }
 export function syncDamagedCollision(mesh,colliders){
  if(!mesh.userData.collider)return;
+ const local=collisionVolumes(mesh),cached=movingCollisions.get(mesh);
+ // Motion changes world bounds, not the local collision volumes. Keep the
+ // existing boxes and list order until a real fracture replaces those volumes.
+ if(mesh.userData.dynamicEnvironment&&cached?.colliders===colliders&&cached.local===local&&cached.boxes===mesh.userData.damageColliders){
+  for(let i=0;i<local.length;i++)cached.boxes[i].copy(local[i]).applyMatrix4(mesh.matrixWorld);
+  invalidateSupport(colliders,true);return;
+ }
  const previous=mesh.userData.damageColliders||[mesh.userData.collider];for(const box of previous){const i=colliders.indexOf(box);if(i>=0)colliders.splice(i,1);}
- const boxes=collisionVolumes(mesh).map(b=>b.clone().applyMatrix4(mesh.matrixWorld));
+ const boxes=local.map(b=>b.clone().applyMatrix4(mesh.matrixWorld));
  for(const box of boxes){box.supportMesh=mesh;if(mesh.userData.dynamicEnvironment)box.dynamicEnvironment=true;}
  mesh.userData.damageColliders=boxes;if(boxes.length)mesh.userData.collider=boxes[0];colliders.push(...boxes);invalidateSupport(colliders,!!mesh.userData.dynamicEnvironment);
+ if(mesh.userData.dynamicEnvironment)movingCollisions.set(mesh,{colliders,local,boxes});else movingCollisions.delete(mesh);
 }
 // Sever a narrow rail/slat at the hit, retaining its anchored ends. No whole
 // decorative wall is erased; shots can pass through the new local opening.

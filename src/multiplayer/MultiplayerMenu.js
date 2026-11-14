@@ -1,0 +1,40 @@
+import {Scoreboard} from './Scoreboard.js';
+import {NetworkSession} from './NetworkSession.js';
+import {resolveInvite} from './Invite.js';
+import './multiplayer.css';
+
+export function multiplayerMenu(game,world){
+ const params=new URLSearchParams(location.search),enabled=params.get('multiplayer')==='1';
+ if(!enabled){const link=document.createElement('a');link.id='private-match-link';link.textContent='PRIVATE MULTIPLAYER · HOST / JOIN';const url=new URL(location.href);url.searchParams.set('multiplayer','1');link.href=url.href;game.btnPlay.after(link);return;}
+ game.scoreboard=new Scoreboard(game);
+ game.poseInspector.button.hidden=true;game.poseInspector.toggle=()=>{};game.idleComparison.panel.style.display='none';game.idleComparison.show=async()=>{};game.tripoPlayer.button.hidden=true;game.tripoPlayer.toggle=()=>{};
+ document.getElementById('reset-villa')?.remove();
+ for(const link of document.querySelectorAll('.map-select a')){const url=new URL(link.href);url.searchParams.set('multiplayer','1');link.href=url.href;}
+ const panel=document.createElement('section');panel.id='multiplayer-menu';panel.innerHTML=`<h2>PRIVATE MATCH</h2><p class="mp-help">The host runs <b>Host Multiplayer.cmd</b>. Friends open the host’s LAN or Tailscale address.</p><label>Your name<input id="mp-name" maxlength="20" autocomplete="nickname" value="Operator"></label><label>Choose your side<select id="mp-side"><option value="">Select a side...</option><option value="red">Red - Arrival court</option><option value="blue">Blue - Pool terrace</option><option value="spectator">Spectator - Watch only</option></select></label><label>Host address<input id="mp-address" autocomplete="off" placeholder="http://192.168.1.5:2567"></label><div class="mp-fields"><label>Room code (joining only)<input id="mp-code" maxlength="7" autocomplete="off" placeholder="Generated when you create a room"></label><label>Password (optional)<input id="mp-password" type="password" maxlength="64" autocomplete="off"></label></div><label class="mp-balance-label"><input id="mp-balance" type="checkbox"> Balance host latency (new room)</label><p class="mp-help">Optional: after about 6 seconds with all players connected, fixes extra host gameplay delay to the slowest average connection (up to 250 ms). Local movement stays predicted. New players after calibration do not change the target. Recreate the room to recalibrate.</p><div class="mp-actions"><button id="mp-create" type="button">CREATE ROOM</button><button id="mp-join" type="button">JOIN ROOM</button></div><p id="mp-status" role="status">Create a room on the host’s server, or enter a room code to join.</p><div id="mp-share" hidden><strong id="mp-room-label"></strong><button id="mp-copy" type="button">COPY INVITE LINK</button><p>Up to 4 players - Red vs Blue - Hold TAB for scoreboard · Health and ammunition reset after respawning. Keep the host server open.</p></div><a id="mp-practice">Back to single-player practice</a>`;
+ const intro=document.querySelector('.map-brief')||document.querySelector('.map-select');if(intro)intro.after(panel);else game.btnPlay.before(panel);panel.after(game.btnPlay);
+ const $=id=>panel.querySelector('#'+id),status=(message,error=false)=>{$('mp-status').textContent=message;$('mp-status').classList.toggle('mp-error',error);};
+ const inviteLabel=document.createElement('label');inviteLabel.textContent='Invite link · same network';const invite=document.createElement('input');invite.id='mp-invite';invite.readOnly=true;invite.setAttribute('aria-label','Invite link');invite.onclick=()=>invite.select();inviteLabel.append(invite);$('mp-copy').before(inviteLabel);
+ const inviteHelp=document.createElement('p');inviteHelp.textContent='This Wi-Fi link works on the host’s local network. Share the room password separately.';$('mp-copy').after(inviteHelp);
+ const prepareInvite=async()=>{const button=$('mp-copy');button.disabled=true;try{invite.value=await resolveInvite($('mp-address').value.trim(),game.multiplayer.code,game.mapId);button.disabled=false;return true;}catch(error){invite.value='';status(error.message,true);return false;}};
+ const practice=new URL(location.href);for(const key of ['multiplayer','room','server'])practice.searchParams.delete(key);$('mp-practice').href=practice.href;
+ try{$('mp-name').value=localStorage.getItem('fast-snipe-network-name')||'Operator';}catch{}
+ const endpoint=params.get('server')||`${location.protocol}//${location.hostname}:${['5180','5181','5173'].includes(location.port)?'2567':location.port|| (location.protocol==='https:'?'443':'80')}`;
+ $('mp-address').value=endpoint;$('mp-code').value=params.get('room')||'';game.btnPlay.textContent='CONNECT TO A ROOM FIRST';game.btnPlay.disabled=true;
+ game.btnPlay.addEventListener('click',event=>{if(!game.multiplayer?.connected){event.stopImmediatePropagation();status('Create or join a room first.',true);}},true);
+ let connecting=false;
+ const connect=async create=>{
+  if(connecting||game.multiplayer?.connected)return;if(!$('mp-side').value){status('Choose Red, Blue, or Spectator before connecting.',true);$('mp-side').focus();return;}const code=$('mp-code').value.trim().toUpperCase();if(!create&&!/^[A-Z2-9]{7}$/.test(code)){status('Enter the 7-character room code from the host.',true);return;}
+  connecting=true;$('mp-create').disabled=$('mp-join').disabled=true;
+  const session=new NetworkSession(game,world,status);game.multiplayer=session;
+  session.onReady=async()=>{await game.graphicsReady;game.btnPlay.disabled=false;game.btnPlay.textContent=session.own?.spectator?'SPECTATE MATCH':'ENTER PRIVATE MATCH';$('mp-side').disabled=true;$('mp-room-label').textContent='ROOM '+session.code;$('mp-code').value=session.code;$('mp-share').hidden=false;await prepareInvite();game.btnPlay.scrollIntoView({block:'nearest'});};
+  session.onFailure=()=>{game.btnPlay.disabled=true;$('mp-create').disabled=$('mp-join').disabled=true;};
+  try{await game.graphicsReady;await session.connect($('mp-address').value.trim(),create?'':code,{name:$('mp-name').value,map:game.mapId,password:$('mp-password').value,side:$('mp-side').value,balanceHost:create&&$('mp-balance').checked});try{localStorage.setItem('fast-snipe-network-name',$('mp-name').value);}catch{}}
+  catch(error){status(error.message||'Could not connect.',true);game.multiplayer=null;$('mp-create').disabled=$('mp-join').disabled=false;}
+  finally{connecting=false;}
+ };
+ $('mp-create').onclick=()=>connect(true);$('mp-join').onclick=()=>connect(false);
+ $('mp-address').addEventListener('change',()=>{if(game.multiplayer?.connected)void prepareInvite();});
+ $('mp-copy').onclick=async()=>{if(!invite.value)return;try{await navigator.clipboard.writeText(invite.value);status('Invite link copied. This link is for the host’s local network.');}catch{invite.focus();invite.select();invite.setSelectionRange(0,invite.value.length);status('Browser clipboard access is blocked. The invite is selected—press Ctrl+C to copy it.');}};
+ const badge=document.createElement('div');badge.id='network-status';document.getElementById('hud').append(badge);
+ setInterval(()=>{const n=game.multiplayer;badge.textContent=n?.connected?`PRIVATE · ${n.own?.spectator?'SPECTATOR':n.own?.team===1?'BLUE':'RED'} · TAB: SCORE · ${n.code} · ${n.remotes.size+1}/4 · Ping ${n.ping} ms${n.networkStats?.enabled?` · ${n.networkStats.locked?`Balance target ${Math.round(n.networkStats.target)} ms · Added ${n.id===n.networkStats.host?n.networkStats.addedRtt:0} ms RTT`:'Calibrating host balance…'}`:''}`:'PRIVATE · NOT CONNECTED';},500);
+}

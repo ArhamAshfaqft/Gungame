@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as T from 'three';
-import {World,Body,Box,Vec3,Quaternion} from 'cannon-es';
+import {World,Body,Box,Vec3,Quaternion,SAPBroadphase} from 'cannon-es';
 import {MotionBatch} from '../src/environment/MotionBatch.js';
 import {installShapeCulling} from '../src/environment/ShapeCulling.js';
-import {materialPart,removeProp} from '../src/world/MaterialProps.js';
+import {materialPart,removeProp,syncDamagedCollision} from '../src/world/MaterialProps.js';
 import {SurfaceDamage} from '../src/world/SurfaceDamage.js';
 import {projectSurfaceMark,removeSurfaceMark} from '../src/world/SurfaceDecal.js';
 import {soundEngine} from '../src/audio/SoundEngine.js';
@@ -12,8 +12,69 @@ import {physicsBox} from '../src/environment/PhysicsBox.js';
 import {accelerateRaycast} from '../src/environment/RaycastCache.js';
 import {WorldRayQuery} from '../src/environment/WorldRayQuery.js';
 import {updateShadowCache} from '../src/environment/ShadowCache.js';
-import {unionCollisionBoxes} from '../src/environment/CollisionVolumes.js';
+import {unionCollisionBoxes,collisionVolumes} from '../src/environment/CollisionVolumes.js';
+import {WorldSSAOPass} from '../src/environment/WorldSSAOPass.js';
+import {SSAOPass} from 'three/examples/jsm/postprocessing/SSAOPass.js';
+import {EnvironmentSystem} from '../src/environment/EnvironmentSystem.js';
+import {supportCandidates,invalidateSupport,supportHeight} from '../src/world/SupportIndex.js';
+import {LiquidSystem} from '../src/environment/LiquidSystem.js';
 for(const k of ['playWoodHit','playDoorBreak','playGlassBreak','playImpact'])soundEngine[k]=()=>{};
+
+test('map and particle support queries share one index and see moves, fractures and removals',()=>{
+ const mesh=materialPart(new T.Mesh(new T.BoxGeometry(2,.2,2),new T.MeshStandardMaterial()),'wood');mesh.position.y=2;mesh.updateMatrixWorld(true);
+ const box=new T.Box3().setFromObject(mesh);box.supportMesh=mesh;mesh.userData.collider=box;
+ const colliders=[box],map={colliders},particles={colliders},point=new T.Vector3(0,3,0);
+ assert.ok(Math.abs(supportHeight(map,point)-2.1)<1e-7);assert.equal(supportHeight(particles,point),supportHeight(map,point));assert.equal(map.supportIndex,particles.supportIndex);
+ mesh.position.set(4,1,0);mesh.updateMatrixWorld(true);box.setFromObject(mesh);invalidateSupport(colliders,true);
+ assert.equal(supportHeight(particles,point),0);assert.equal(supportHeight(map,new T.Vector3(4,3,0)),supportHeight(particles,new T.Vector3(4,3,0)));assert.equal(map.supportIndex,particles.supportIndex);
+ removeProp(mesh,colliders);assert.equal(supportHeight(map,new T.Vector3(4,3,0)),0);assert.equal(supportHeight(particles,new T.Vector3(4,3,0)),0);
+ const other={colliders:[]};supportCandidates(other,point);assert.notEqual(other.supportIndex,map.supportIndex,'different collision worlds remain independent');
+});
+
+test('moving collision bounds reuse boxes and follow the same cut geometry through rotation and removal',()=>{
+ const scene=new T.Scene(),mesh=materialPart(new T.Mesh(new T.BoxGeometry(1,1,.2),new T.MeshStandardMaterial()),'wood');scene.add(mesh);scene.updateMatrixWorld(true);
+ const colliders=[new T.Box3().setFromObject(mesh)];mesh.userData.collider=colliders[0];mesh.userData.dynamicEnvironment=true;syncDamagedCollision(mesh,colliders);
+ const first=mesh.userData.damageColliders,revision=colliders.supportRevision;
+ mesh.position.set(2,3,4);mesh.rotation.set(.2,.5,.3);scene.updateMatrixWorld(true);syncDamagedCollision(mesh,colliders);
+ assert.equal(mesh.userData.damageColliders,first);assert.ok(colliders.supportRevision>revision);assert.deepEqual(first[0],Object.assign(mesh.geometry.boundingBox.clone().applyMatrix4(mesh.matrixWorld),{supportMesh:mesh,dynamicEnvironment:true}));
+ const fx=new SurfaceDamage(scene,colliders);fx.hit({object:mesh,point:mesh.localToWorld(new T.Vector3(0,0,.1)),face:{normal:new T.Vector3(0,0,1)},distance:0},'primary',new T.Vector3(0,0,-1).transformDirection(mesh.matrixWorld));
+ syncDamagedCollision(mesh,colliders);assert.notEqual(mesh.userData.damageColliders,first,'a fracture replaces the original local collision volumes');const cut=mesh.userData.damageColliders;
+ mesh.position.x+=2;scene.updateMatrixWorld(true);syncDamagedCollision(mesh,colliders);assert.equal(mesh.userData.damageColliders,cut);
+ collisionVolumes(mesh).forEach((local,i)=>{const expected=local.clone().applyMatrix4(mesh.matrixWorld);assert.ok(cut[i].min.equals(expected.min)&&cut[i].max.equals(expected.max),'every cut collision box follows the actual world transform');});
+ removeProp(mesh,colliders);assert.equal(colliders.length,0);mesh.visible=true;syncDamagedCollision(mesh,colliders);assert.notEqual(mesh.userData.damageColliders,cut,'removal invalidates the moving cache');assert.ok(colliders.length>0);
+});
+
+test('selective SSAO visibility matches the stock pass and restores hidden subtrees',()=>{
+ const scene=new T.Scene(),hidden=new T.Group(),line=new T.Line(),points=new T.Points(),nestedLine=new T.Line();
+ hidden.visible=false;hidden.add(new T.Line(),new T.Mesh());line.add(nestedLine,new T.Mesh());scene.add(new T.Mesh(),line,points,hidden);points.visible=false;
+ const stockScene=scene.clone(true),make=(prototype,scene)=>Object.assign(Object.create(prototype),{scene,_visibilityCache:new Map()});
+ const original=make(SSAOPass.prototype,stockScene),optimized=make(WorldSSAOPass.prototype,scene),visibility=s=>{const result=[];s.traverseVisible(o=>result.push(o.type));return result;};
+ const before=[];scene.traverse(o=>before.push(o.visible));original.overrideVisibility();optimized.overrideVisibility();assert.deepEqual(visibility(scene),visibility(stockScene));
+ assert.ok([...optimized._visibilityCache.keys()].every(o=>o.isLine||o.isPoints));
+ original.restoreVisibility();optimized.restoreVisibility();const after=[];scene.traverse(o=>after.push(o.visible));assert.deepEqual(after,before);assert.equal(optimized._visibilityCache.size,0);
+});
+
+test('water impact rings stay out of SSAO while the bounded visible ripple and water surface remain available',()=>{
+ const scene=new T.Scene(),map={scene,colliders:[],rubbleFloor:()=>0},liquids=new LiquidSystem(map),water=new T.Mesh(new T.PlaneGeometry(1,1),new T.MeshPhysicalMaterial());
+ water.rotation.x=-Math.PI/2;water.position.y=.6;scene.add(water);scene.updateMatrixWorld(true);
+ const body=liquids.add(water,{bottom:.2});body.impact(new T.Vector3(.45,.6,.45),34);liquids.update(.9);
+ assert.equal(liquids.rings.count,1);assert.deepEqual(Array.from(liquids.rippleBounds.array.slice(0,4)),[-.5,.5,-.5,.5]);
+ const pass=Object.assign(Object.create(WorldSSAOPass.prototype),{scene,_visibilityCache:new Map()});
+ assert.equal(liquids.rings.visible,true);pass.overrideVisibility();assert.equal(liquids.rings.visible,false,'unclipped normal/depth ring cannot shadow the floor outside the tub');assert.equal(water.visible,true);
+ pass.restoreVisibility();assert.equal(liquids.rings.visible,true,'the clipped visible ripple still renders');
+ liquids.rings.visible=false;pass.overrideVisibility();pass.restoreVisibility();assert.equal(liquids.rings.visible,false,'an already hidden effect stays hidden');
+});
+
+test('clustered physics support queries retain all neighbours across buckets, floors and removals',()=>{
+ const map={scene:new T.Scene(),colliders:[]},environment=new EnvironmentSystem(map);
+ for(let x=-6;x<=6;x++)for(let z=-6;z<=6;z++)for(const y of [0,3.4,6.8,10.2])map.colliders.push(new T.Box3(new T.Vector3(x*2,y,z*2),new T.Vector3(x*2+1.5,y+.2,z*2+1.5)));
+ const positions=[[-.01,1,-.01],[.01,7,.01],[1.99,4,1.99],[2.01,10,2.01],[-2.01,3,-2.01]];
+ environment.records=Array.from({length:180},(_,i)=>({body:new Body({mass:1,position:new Vec3(...positions[i%positions.length])})}));
+ const expected=()=>{const set=new Set();for(const r of environment.records){if(r.body.sleepState===Body.SLEEPING)continue;const p=r.body.position;for(let x=-2;x<=2;x++)for(let z=-2;z<=2;z++)for(const box of supportCandidates(map,new T.Vector3((Math.floor(p.x/2)+x)*2+.5,0,(Math.floor(p.z/2)+z)*2+.5)))if(!box.dynamicEnvironment&&box.max.y>=p.y-5&&box.min.y<=p.y+4)set.add(box);}return set;};
+ environment.syncStatic();assert.deepEqual(new Set(environment.staticBodies.keys()),expected());
+ const first=[...environment.staticBodies.values()][0].body;environment.syncStatic();assert.equal([...environment.staticBodies.values()][0].body,first,'unchanged supports retain their physics bodies');
+ const removed=[...environment.staticBodies.keys()][0];map.colliders.splice(map.colliders.indexOf(removed),1);invalidateSupport(map.colliders);environment.records.slice(0,36).forEach(r=>r.body.sleep());environment.syncStatic();assert.ok(!environment.staticBodies.has(removed));assert.deepEqual(new Set(environment.staticBodies.keys()),expected());
+});
 
 test('collision volume union preserves every occupied point and opening without duplicate contacts or mass',()=>{
  const box=(a,b)=>new T.Box3(new T.Vector3(...a),new T.Vector3(...b)),source=[box([0,0,0],[2,.2,1]),box([1,0,0],[3,.2,1]),box([0,0,0],[1,.2,1]),box([4,0,0],[5,.2,1])],result=unionCollisionBoxes(source);
@@ -62,6 +123,36 @@ test('analytical box projection matches generic corner projection across sizes, 
  let state=123;const random=()=>((state=(Math.imul(state,1664525)+1013904223)>>>0)/4294967296);
  for(let i=0;i<1200;i++){const a=new Vec3(.01+random()*5,.01+random()*3,.01+random()*5),b=new Vec3(.01+random(),.01+random(),.01+random()),fastA=physicsBox(a).convexPolyhedronRepresentation,fastB=physicsBox(b).convexPolyhedronRepresentation,baseA=new Box(a).convexPolyhedronRepresentation,baseB=new Box(b).convexPolyhedronRepresentation,qA=new Quaternion(),qB=new Quaternion();qA.setFromEuler(random()*6,random()*6,random()*6);qB.setFromEuler(random()*6,random()*6,random()*6);
   for(let n=0;n<3;n++){const axis=new Vec3(random()-.5,random()-.5,random()-.5);axis.normalize();const pA=new Vec3(random()*6,random()*6,random()*6),pB=new Vec3(random()*6,random()*6,random()*6),expected=baseA.testSepAxis(axis,baseB,pA,qA,pB,qB),actual=fastA.testSepAxis(axis,fastB,pA,qA,pB,qB);if(expected===false)assert.equal(actual,false);else assert.ok(Math.abs(actual-expected)<1e-10);}
+ }
+});
+
+test('cached box axes preserve the full Cannon SAT search and invalidate when either box rotates',()=>{
+ let state=321;const random=()=>((state=(Math.imul(state,1664525)+1013904223)>>>0)/4294967296),reference=new Box(new Vec3(1,1,1)).convexPolyhedronRepresentation.findSeparatingAxis;
+ for(let i=0;i<1200;i++){
+  const a=physicsBox(new Vec3(.02+random()*2,.02+random(),.02+random())).convexPolyhedronRepresentation,b=physicsBox(new Vec3(.02+random(),.02+random()*2,.02+random())).convexPolyhedronRepresentation;
+  const pA=new Vec3(random(),random(),random()),pB=new Vec3(random()*2,random()*2,random()*2),qA=new Quaternion(),qB=new Quaternion();
+  for(let j=0;j<3;j++){
+   if(j!==1)qA.setFromEuler(random()*6,random()*6,random()*6);if(j!==2)qB.setFromEuler(random()*6,random()*6,random()*6);
+   const expected=new Vec3(),actual=new Vec3(),hit=reference.call(a,b,pA,qA,pB,qB,expected);
+   assert.equal(a.findSeparatingAxis(b,pA,qA,pB,qB,actual),hit);if(hit)assert.ok(actual.distanceTo(expected)<1e-12,'contact normal and tie-breaking order are unchanged');
+  }
+ }
+});
+
+test('cached SAT axes retain contact counts and rigid-body trajectories through pile impacts',()=>{
+ const reference=new Box(new Vec3(1,1,1)).convexPolyhedronRepresentation.findSeparatingAxis;
+ const make=optimized=>{
+  const world=new World({gravity:new Vec3(0,-9.81,0)});world.broadphase=new SAPBroadphase(world);world.broadphase.useBoundingBoxes=true;world.solver.iterations=20;
+  const shape=size=>{const s=physicsBox(new Vec3(...size));if(!optimized)s.convexPolyhedronRepresentation.findSeparatingAxis=reference;return s;};
+  world.addBody(new Body({mass:0,shape:shape([3,.1,3]),position:new Vec3(0,-.1,0)}));
+  for(let i=0;i<18;i++){const body=new Body({mass:.2,shape:shape([.15,.07,.2]),position:new Vec3((i%3-.9)*.32,.1+Math.floor(i/3)*.16,0)});body.quaternion.setFromEuler(i*.01,i*.04,i*.005);world.addBody(body);}
+  return world;
+ };
+ const a=make(false),b=make(true);
+ for(let frame=0;frame<360;frame++){
+  if(frame===100)for(const world of [a,b])world.bodies[10].applyImpulse(new Vec3(.2,.1,.08));
+  a.step(1/60);b.step(1/60);assert.equal(b.contacts.length,a.contacts.length);
+  for(let i=1;i<a.bodies.length;i++){assert.ok(a.bodies[i].position.distanceTo(b.bodies[i].position)<1e-9);const qa=a.bodies[i].quaternion,qb=b.bodies[i].quaternion;assert.ok(Math.abs(qa.x-qb.x)+Math.abs(qa.y-qb.y)+Math.abs(qa.z-qb.z)+Math.abs(qa.w-qb.w)<1e-9);}
  }
 });
 

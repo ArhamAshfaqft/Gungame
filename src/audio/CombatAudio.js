@@ -8,12 +8,12 @@ export class CombatAudio {
             }))).catch(()=>null);
         return this.loading;
     }
-    play(key,{volume=.5,delay=0,rate=1,group='effects',duration=null,position=null}={}) {
+    play(key,{volume=.5,delay=0,rate=1,group='effects',duration=null,position=null,stereo=0}={}) {
         const {ctx,masterGain,isMuted}=this.engine,buffer=this.buffers.get(key);
         if(!ctx||isMuted||!buffer)return false;
         if(this.active.size>=this.limit){const oldest=[...this.active].find(v=>v.group==='effects');if(oldest){this.active.delete(oldest);oldest.source.stop();}else return true;}
         const source=ctx.createBufferSource(),gain=ctx.createGain();source.buffer=buffer;source.playbackRate.value=rate;
-        const spatial=position&&this.listener?this.spatial(position):{volume:1,pan:0};
+        const spatial=position&&this.listener?this.spatial(position):{volume:1,pan:stereo};
         gain.gain.value=volume*spatial.volume;source.connect(gain);
         let pan;if(spatial.pan){pan=ctx.createStereoPanner();pan.pan.value=spatial.pan;gain.connect(pan);pan.connect(masterGain);}else gain.connect(masterGain);
         const voice={source,group};this.active.add(voice);

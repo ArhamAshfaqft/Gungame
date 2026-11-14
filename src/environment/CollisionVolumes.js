@@ -1,5 +1,6 @@
 import {Box3,Vector3} from 'three';
 const axes=['x','y','z'],cache=new WeakMap(),epsilon=1e-7;
+const revisionOf=mesh=>mesh.userData.breakable?.detachedEnvironment?`${mesh.geometry.index?.version}:${mesh.userData.breakable.broken.size}`:mesh.geometry.attributes.position.version;
 function subtract(box,cut){
  const overlap=box.clone().intersect(cut);if(axes.some(a=>overlap.max[a]-overlap.min[a]<=epsilon))return[box];
  const core=box.clone(),out=[];
@@ -24,10 +25,18 @@ export function unionCollisionBoxes(boxes){
  }return result;
 }
 export function collisionVolumes(mesh){
- const g=mesh.geometry,solids=mesh.userData.fractureSolids,panel=mesh.userData.breakable,revision=panel?.detachedEnvironment?`${g.index?.version}:${panel.broken.size}`:g.attributes.position.version,old=cache.get(g);
+ const g=mesh.geometry,solids=mesh.userData.fractureSolids,panel=mesh.userData.breakable,revision=revisionOf(mesh),old=cache.get(g);
  if(old&&old.solids===solids&&old.revision===revision)return old.boxes;
  let boxes;if(panel?.detachedEnvironment)boxes=panel.pieces.filter(p=>!panel.broken.has(p.id)).map(p=>new Box3(new Vector3(p.bounds.min.x,p.bounds.min.y,-panel.thickness/2),new Vector3(p.bounds.max.x,p.bounds.max.y,panel.thickness/2)));
  else if(solids)boxes=solids.map(s=>new Box3().setFromPoints(s.flat()));
  else{if(!g.boundingBox)g.computeBoundingBox();boxes=[g.boundingBox.clone()];}
  if(boxes.length>1)boxes=unionCollisionBoxes(boxes);cache.set(g,{solids,revision,boxes});return boxes;
+}
+
+// Worker-prepared local volumes use the identical union algorithm. Install them
+// with the mesh replacement so collision and physics activation need no second
+// CSG union on the main thread. Detached panels still use their live cell state.
+export function primeCollisionVolumes(mesh,boxes){
+ if(mesh.userData.breakable)return;
+ cache.set(mesh.geometry,{solids:mesh.userData.fractureSolids,revision:revisionOf(mesh),boxes});
 }

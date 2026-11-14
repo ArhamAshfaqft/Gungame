@@ -81,7 +81,15 @@ export function buildVillaInteriors(m){
  // KITCHEN: individual fronts, island shelves, range hood and walk-in pantry.
  {
  const y=3.4;cabinet(5.75,y,-10.1,3.7,.88,1.2,'white');prop(5.75,y+.94,-10.1,3.8,.12,1.35,'marble');
- for(const x of [4.3,5.6,6.9])cabinet(x,y+1.8,-10.5,1.12,.85,.65,'walnut');
+ // Cabinet suspension rails bridge the glazing and bolt into the solid side piers.
+ const mountingRails=[1.84,2.55].map(h=>{
+  const rail=prop(5.75,y+h,-10.87,3.9,.045,.055,'steel');rail.name='Kitchen cabinet suspension rail';
+  rail.userData.wallAttachment=[V(3.8,y+h,-11),V(7.7,y+h,-11)];return rail;
+ });
+ for(const x of [4.3,5.6,6.9]){
+  const group=cabinet(x,y+1.8,-10.5,1.12,.85,.65,'walnut'),record=m.environment.byObject.get(group);
+  record.supports=mountingRails.map(mesh=>({mesh,anchor:mesh.worldToLocal(V(x,mesh.position.y,-10.87))}));
+ }
  cabinet(6.5,y,-5.3,3.6,.95,1.5,'walnut');prop(6.5,y+1.02,-5.3,3.8,.12,1.7,'marble');
  for(const x of [5.25,6.5,7.75]){m.chairFacing(x,y,-3.5,x,-5.3);pendant(x,y+2.5,-5.3,.2);}
  for(const x of [5.7,6.35])for(const z of [-10.2,-9.75])cyl(x,y+1.012,z,.16,.018,'black');
@@ -134,12 +142,16 @@ export function buildVillaInteriors(m){
  d(-13.78,1.8,0,.05,1.2,3,'darkStone');for(let i=0;i<7;i++){d(-13.7,1.7, -.9+i*.3,.08,.4,.06,'steel');d(-13.65,1.53,-.9+i*.3,.09,.1,.1,'red');}
  for(let z=3;z<8;z+=.4)for(const x of [-10.1,-5.9])d(x,.01,z,.12,.02,.22,'ochre');
  }
+ }
+
+export function buildWindowDressings(m){
+ const d=(x,y,z,w,h,depth,mat)=>m.box(x,y,z,w,h,depth,mat,false,true);
  // Window dressings, sockets, baseboards and switches create detail at player height.
  for(const p of [...m.panels]){
   if(p.kind==='glass'&&p.height>1.5&&p.group.position.y>3){
    p.group.updateMatrixWorld(true);for(const side of [0,p.width]){const pos=p.group.localToWorld(V(side+.1,p.height/2,0));const curtain=d(pos.x,pos.y,pos.z,.22,p.height+.1,.16,'curtain');curtain.rotation.y=p.group.rotation.y;}
   }
-  if(p.isDoor){const pos=p.group.localToWorld(V(p.width+.17,1.1,.08));d(pos.x,pos.y,pos.z,.08,.12,.025,'white');}
+  if(p.isDoor){const anchor=p.group.localToWorld(V(-.17,1.1,0)),backed=m.panels.some(w=>{if(w.kind!=='plaster')return false;const q=w.mesh.worldToLocal(anchor.clone());return Math.abs(q.z)<.2&&q.x>0&&q.x<w.width&&q.y>0&&q.y<w.height;});if(backed){const pos=p.group.localToWorld(V(-.17,1.1,.105)),plate=materialPart(d(pos.x,pos.y,pos.z,.08,.12,.025,'white'),'ceramic');plate.name='Wall switch';plate.rotation.y=p.baseRotation;plate.userData.wallAttachment=[anchor];}}
  }
 }
 
@@ -171,5 +183,5 @@ export function buildGalleryWing(m){
  m.sofaFacing(18,6.8,-6,2.8,18,-4);m.table(18,6.8,-4,1.6,.8,.45);
  for(const x of [16,19,22]){b(x,.5,-7,1.4,1,1.2,'wood');b(x,1.5,-7,1.1,1,.9,'wood');}
  m.wall('x',21.8,-4,2,0,[{at:-1,width:2,height:2.4,kind:'open'}],'plaster',true);
- m.sign('COLLECTION',14.12,5.55,-9.3,-Math.PI/2);
+ m.sign('COLLECTION',14.12,5.55,-8.6,-Math.PI/2);
 }

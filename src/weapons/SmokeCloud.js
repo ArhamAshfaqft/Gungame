@@ -2,7 +2,12 @@ import * as THREE from 'three';
 import { seededRandom } from '../world/FractureGeometry.js';
 
 let texture;
-function smokeTexture() {
+export function smokeBounds(room,position){
+ if(room?.smokeBounds)return room.smokeBounds(position);
+ if(room?.origin){const bounds=new THREE.Box3(new THREE.Vector3(room.origin.x-4.86,.05,room.frontZ+.14),new THREE.Vector3(room.origin.x+4.86,3.16,room.origin.z+3.86));if(bounds.containsPoint(position))return bounds;}
+ return null;
+}
+export function smokeTexture() {
     if (texture) return texture;
     const size = 64, data = new Uint8Array(size * size * 4);
     for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
@@ -51,6 +56,7 @@ export class SmokeCloud {
         });
         this.mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), material, 36);
         this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.mesh.frustumCulled = false;
+        this.mesh.userData.ssao=false;
         this.puffs = [];
         const random = seededRandom(9182);
         for (let i = 0; i < 36; i++) {
@@ -60,9 +66,11 @@ export class SmokeCloud {
         this.matrix = new THREE.Matrix4(); scene.add(this.mesh); this.update(0);
     }
     get strength() { return Math.min(1, this.age / 0.8) * Math.min(1, Math.max(0, (this.duration - this.age) / 2)); }
+    get growth() { return .15 + .85 * (1-Math.exp(-this.age*1.8)); }
     update(delta) {
         this.age += delta;
-        const growth = 0.3 + Math.min(1, this.age / 1.5) * 0.7;
+        if(this.volumeOnly)return;
+        const growth = this.growth;
         this.puffs.forEach((puff, i) => {
             const p = this.center.clone().addScaledVector(puff.offset, growth);
             p.y = Math.max(0.4, p.y);
@@ -70,7 +78,7 @@ export class SmokeCloud {
             this.mesh.setMatrixAt(i, this.matrix);
         });
         this.mesh.instanceMatrix.needsUpdate = true;
-        this.mesh.material.uniforms.opacity.value = this.strength * 0.72;
+        this.mesh.material.uniforms.opacity.value = this.strength * 0.95;
     }
     opacityAt(point) {
         if (this.clipBounds && !this.clipBounds.containsPoint(point)) return 0;

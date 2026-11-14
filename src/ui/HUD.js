@@ -1,3 +1,6 @@
+import {makeKillFeedEntry} from './KillFeed.js';
+import {TacticalHUD} from './TacticalHUD.js';
+
 export class HUD {
     constructor() {
         this.crosshair = document.getElementById('crosshair');
@@ -17,6 +20,7 @@ export class HUD {
         this.health = document.getElementById('health-value');
         this.primarySlot = document.getElementById('slot-primary');
         this.pistolSlot = document.getElementById('slot-pistol');
+        this.assaultSlot = document.getElementById('slot-assault');
         this.killfeed = document.getElementById('killfeed');
         this.banner = document.getElementById('streak-banner');
         this.interactPrompt = document.getElementById('interact-prompt');
@@ -31,6 +35,7 @@ export class HUD {
         this.hitmarkerTimer = 0;
         this.streakCount = 0;
         this.lastKillTime = 0;
+        this.tactical = new TacticalHUD();
 
         this.setupGlobalEvents();
     }
@@ -41,11 +46,13 @@ export class HUD {
             this.showDamageNumber(damage, isHeadshot);
         };
 
-        window.__recordKill = (victimName, isHeadshot) => {
-            this.addKillFeedEntry(victimName, isHeadshot);
+        window.__recordKill = (victimName, isHeadshot, weaponSlot) => {
+            this.addKillFeedEntry(victimName, isHeadshot, weaponSlot);
             this.triggerStreakBanner(isHeadshot);
         };
     }
+
+    setMatchState(state) { this.tactical.setMatchState(state); }
 
     showHitmarker(isHeadshot) {
         this.hitmarker.classList.remove('hidden', 'hit-headshot');
@@ -77,15 +84,9 @@ export class HUD {
         setTimeout(() => el.remove(), 750);
     }
 
-    addKillFeedEntry(victimName, isHeadshot) {
-        const entry = document.createElement('div');
-        entry.className = 'kill-row';
-
-        const isSlideKill = window.__isPlayerSliding;
-        const badge = isSlideKill ? ' [SLIDE SHOT]' : (isHeadshot ? ' [QUICKSCOPE]' : '');
-
-        entry.innerHTML = `<span class="killer">YOU</span> <span class="weapon-icon">︻╦╤─</span> <span class="victim">${victimName}</span> <span class="badge">${badge}</span>`;
-
+    addKillFeedEntry(victimName, isHeadshot, weaponSlot, killerName = 'YOU') {
+        const entry = makeKillFeedEntry(victimName, isHeadshot, weaponSlot, killerName);
+        while(this.killfeed.children.length>=5)this.killfeed.firstElementChild.remove();
         this.killfeed.appendChild(entry);
         setTimeout(() => entry.classList.add('show'), 10);
         setTimeout(() => {
@@ -125,8 +126,9 @@ export class HUD {
 
         // 1. Crosshair bloom
         const ads = weapon.adsProgress;
-        const scopedRifle = !weapon.thirdPerson && !weapon.grenadeEquipped && weapon.activeSlot === 'primary';
-        if (ads > 0.3 && scopedRifle) {
+        const scopedRifle = (!weapon.thirdPerson || weapon.isAiming) && !weapon.grenadeEquipped && weapon.activeSlot === 'primary';
+        const sighted = scopedRifle || ((!weapon.thirdPerson || weapon.isAiming) && !weapon.grenadeEquipped && weapon.activeSlot === 'assault');
+        if (ads > 0.3 && sighted) {
             // Hide crosshair when scoped
             this.crosshair.style.opacity = Math.max(0, (1.0 - ads * 2.5)).toString();
         } else {
@@ -192,6 +194,7 @@ export class HUD {
             : weapon.utilityTimer > 0 ? 'THROWING' : weapon.switchTimer > 0 ? 'DRAWING' : weapon.profile.mode;
         this.primarySlot?.classList.toggle('selected', !weapon.grenadeEquipped && weapon.activeSlot === 'primary');
         this.pistolSlot?.classList.toggle('selected', !weapon.grenadeEquipped && weapon.activeSlot === 'pistol');
+        this.assaultSlot?.classList.toggle('selected', !weapon.grenadeEquipped && weapon.activeSlot === 'assault');
         if (equipment) {
             for (const type of ['frag', 'flash', 'smoke']) {
                 const element = document.getElementById(`utility-${type}`);
@@ -209,12 +212,12 @@ export class HUD {
             }
             const hint = document.getElementById('loadout-hint');
             if (hint) hint.textContent = !equipment.held ? '3 / 4 / 5 · EQUIP GRENADE'
-                : !equipment.held.armed ? 'RMB · PULL PIN | 1 / 2 · STOW'
+                : !equipment.held.armed ? 'RMB · PULL PIN | 1 / 2 / 6 · STOW'
                 : movement.keys.walk ? 'LMB · LOW TOSS | RELEASE ALT · HIGH THROW'
                 : 'LMB · HIGH THROW | ALT + LMB · LOW TOSS';
             if (this.flashOverlay) this.flashOverlay.style.opacity = Math.min(0.98, equipment.flashOpacity).toString();
             if (this.smokeOverlay) this.smokeOverlay.style.opacity = equipment.smokeOpacity.toString();
-            if (this.feedback) this.feedback.textContent = equipment.playerHealth <= 0 ? 'BLAST DOWN / RECOVERING'
+            if (this.feedback) this.feedback.textContent = equipment.playerHealth <= 0 ? (equipment.network?'YOU DIED':'BLAST DOWN / RECOVERING')
                 : equipment.statusTime > 0 ? equipment.status : '';
         }
 
@@ -224,5 +227,6 @@ export class HUD {
             this.interactPrompt.classList.toggle('hidden', !visible);
             if (visible) this.interactLabel.textContent = room.door.open ? 'CLOSE DOOR' : 'OPEN DOOR';
         }
+        this.tactical.update(movement, weapon, equipment);
     }
 }

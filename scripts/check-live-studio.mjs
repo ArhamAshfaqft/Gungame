@@ -1,0 +1,30 @@
+import {chromium} from 'playwright';import assert from 'node:assert/strict';import {readFile,writeFile} from 'node:fs/promises';
+const path='E:/Fast Snipe/public/assets/poses/studio-library.json',original=await readFile(path);const b=await chromium.launch({channel:'chrome',headless:true});const context=await b.newContext({viewport:{width:1800,height:1100}}),p=await context.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));
+try{
+await p.goto('http://127.0.0.1:5181/studio.html');await p.waitForFunction(()=>window.__poseStudio?.bodyRig?.animator&&document.querySelector('#loading').style.display==='none');await p.click('#studio-play');
+await p.waitForFunction(()=>document.querySelector('#studio-live-game')?.contentWindow?.fastSnipeStudioBridge);
+const game=p.frames().find(f=>f.url().includes('studio=1'));game.on('pageerror',e=>errors.push(e.message));await game.waitForFunction(()=>window.__fastSnipe?.thirdPerson.rig?.captureStudioInput);
+await game.locator('#btn-play').click();await game.waitForFunction(()=>!!document.pointerLockElement);
+await p.keyboard.press('Digit6');await p.waitForTimeout(350);await p.keyboard.press('KeyX');await p.keyboard.down('KeyE');await p.mouse.down({button:'right'});await p.waitForTimeout(900);await p.keyboard.press('KeyP');await p.mouse.up({button:'right'});await p.keyboard.up('KeyE');
+await p.waitForFunction(()=>document.querySelector('#studio-live-status').textContent.startsWith('FROZEN'));
+const captured=await game.evaluate(()=>window.fastSnipeStudioBridge.context);console.log('captured',captured);
+assert.equal(captured.slot,'assault');assert.equal(captured.posture,'crouch');assert.equal(captured.side,'right');assert.equal(captured.state,'aim');
+assert.equal(await p.locator('#weapon').inputValue(),'assault');assert.equal(await p.locator('#stance').inputValue(),'aim');assert.equal(await p.locator('#peek-side').inputValue(),'right');
+const bones=()=>game.evaluate(()=>{const r=window.__fastSnipe.thirdPerson.rig;return Object.fromEntries(Object.entries(r.bones).map(([n,b])=>[n,{p:b.position.toArray(),q:b.quaternion.toArray()}]));});
+await p.click('#edit-body-joints');assert.equal(await p.locator('#peek-target').inputValue(),'body');
+const frozen=await bones();await p.waitForTimeout(180);assert.deepEqual(await bones(),frozen);
+await p.selectOption('#peek-target','Right');await p.getByLabel('Hand-only rotation X value',{exact:true}).fill('8');await p.getByLabel('Hand-only rotation X value',{exact:true}).dispatchEvent('change');
+const edited=await bones();assert.notDeepEqual(edited.RightHand,frozen.RightHand);
+await p.click('#save');await p.waitForTimeout(150);
+assert.ok(await p.evaluate(()=>JSON.parse(localStorage.getItem('fast-snipe-poses-v1')).peekPoses['assault:crouch:right:aim'].Right.handRotation[0]>.13));
+await p.selectOption('#studio-live-scope','frame');await p.selectOption('#peek-target','Left');await p.getByLabel('Peek elbow direction Y value',{exact:true}).fill('-2');await p.getByLabel('Peek elbow direction Y value',{exact:true}).dispatchEvent('change');
+await p.click('#save-project');await p.waitForFunction(()=>document.querySelector('#toast').textContent.includes('Saved permanently'));
+const project=JSON.parse(await readFile(path,'utf8'));assert.ok(project.peekTimelines['assault:crouch:right:aim'].length);
+const fresh=await b.newContext();const freshPage=await fresh.newPage();await freshPage.goto('http://127.0.0.1:5181/?map=training');await freshPage.waitForFunction(()=>window.__fastSnipe?.weapon.projectPoseLibrary);
+assert.ok(await freshPage.evaluate(()=>window.__fastSnipe.weapon.poseLibrary.peekTimelines['assault:crouch:right:aim'].length));await fresh.close();
+const beforeRepeat=await bones();await p.getByLabel('Peek elbow direction Y value',{exact:true}).dispatchEvent('change');assert.deepEqual(await bones(),beforeRepeat);
+await p.screenshot({path:'E:/Cache/Temp/studio-live-crouch-ads.png'});
+await p.click('#studio-live-resume');await game.waitForFunction(()=>!window.fastSnipeStudioBridge.frozen&&!!document.pointerLockElement);
+await game.evaluate(()=>window.fastSnipeStudioBridge.freeze());await game.waitForFunction(()=>document.pointerLockElement===null);await p.click('#studio-live-close');await p.waitForFunction(()=>!document.querySelector('#studio-live-game'));assert.equal(await p.locator('#studio-live-game').count(),0);
+assert.deepEqual(errors,[]);console.log(JSON.stringify({captured,freezeStable:true,frozenEditApplied:true,peekKeyframeSaved:true,projectLoadsInFreshBrowser:true,resumed:true,errors}));
+}finally{await writeFile(path,original);await b.close();}

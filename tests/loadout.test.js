@@ -64,8 +64,9 @@ test('pin pull consumes one grenade, release keeps the cooked six-second fuse, a
     assert.equal(equipment.counts.flash, 1);
     equipment.update(2);
     assert.equal(equipment.throwSelected(), true); assert.equal(equipment.throwSelected(), false);
-    equipment.update(0.23); assert.equal(equipment.projectiles.length, 1);
-    assert.ok(Math.abs(equipment.projectiles[0].age - 2.23) < 0.001);
+    equipment.update(0.23); assert.equal(equipment.projectiles.length, 0);
+    equipment.update(0.1); assert.equal(equipment.projectiles.length, 1);
+    assert.ok(Math.abs(equipment.projectiles[0].age - 2.33) < 0.001);
     equipment.update(0.1); assert.equal(equipment.counts.flash, 1);
     for (let n = 0; n < 120; n++) { equipment.update(1 / 60); weapon.update(1 / 60); }
     assert.equal(equipment.projectiles.length, 1, 'cooking and flight share one fuse');
@@ -157,10 +158,10 @@ test('imported actions follow gameplay states without changing saved poses or am
     tick(weapon, 0.3); weapon.shoot(); weapon.update(0.04); assert.equal(weapon.viewMotion.id, 'pistolFire');
     weapon.reload(); weapon.update(0.3); assert.equal(weapon.viewMotion.id, 'pistolReload');
     assert.equal(weapon.magAmmo, 14); tick(weapon, 1); assert.equal(weapon.magAmmo, 15);
-    equipment.select('flash'); weapon.update(0.1); assert.equal(weapon.viewMotion.id, 'grenadeDraw');
-    equipment.pullPin(); equipment.update(0.15); weapon.update(0.01); assert.equal(weapon.viewMotion.id, 'grenadePin');
+    equipment.select('flash'); weapon.update(0.1); assert.equal(weapon.viewMotion, null);
+    equipment.pullPin(); equipment.update(0.15); weapon.update(0.01); assert.equal(weapon.viewMotion, null);
     equipment.update(0.2); equipment.throwSelected(); equipment.update(0.1); weapon.update(0.01);
-    assert.equal(weapon.viewMotion.id, 'grenadeThrow');
+    assert.equal(weapon.viewMotion, null);
     assert.equal(JSON.stringify(weapon.poseLibrary), before);
 });
 
@@ -196,6 +197,19 @@ test('frag damage falls off with distance and opaque cover protects targets and 
     equipment.playerHealth = 100; nearby = distant = 0;
     wall(scene); equipment.explode(new THREE.Vector3(0, 0.9, -4));
     assert.equal(nearby, 0); assert.ok(distant > 0); assert.equal(equipment.playerHealth, 100);
+});
+
+test('frag and flash bursts reuse warmed geometry without sharing opacity or disposing later blasts',()=>{
+ const {equipment}=setup(),position=new THREE.Vector3(20,1,20);let geometryDisposals=0,materialDisposals=0;
+ equipment.burstTemplate.geometry.addEventListener('dispose',()=>geometryDisposals++);
+ equipment.detonate('frag',position);equipment.detonate('flash',position);
+ const [frag,flash]=equipment.bursts.map(b=>b.mesh);
+ assert.equal(frag.geometry,equipment.burstTemplate.geometry);assert.equal(flash.geometry,frag.geometry);assert.notEqual(frag.material,flash.material);
+ assert.equal(frag.material.color.getHex(),0xffa33b);assert.equal(flash.material.color.getHex(),0xfff8df);
+ for(const mesh of [frag,flash])mesh.material.addEventListener('dispose',()=>materialDisposals++);
+ equipment.update(.2);assert.equal(equipment.burstTemplate.material.opacity,1);equipment.update(.3);
+ assert.equal(equipment.bursts.length,0);assert.equal(materialDisposals,2);assert.equal(geometryDisposals,0);
+ equipment.detonate('frag',position);assert.equal(equipment.bursts[0].mesh.geometry,frag.geometry);assert.equal(equipment.bursts[0].mesh.material.opacity,1);
 });
 
 test('smoke grows, clips indoors, fades, and uses a bounded instanced pool', () => {
@@ -251,4 +265,15 @@ test('grenades pass underneath hollow stair flights and bounce on the real slope
  const box=new THREE.Box3(new THREE.Vector3(-1,3.4,-3.5),new THREE.Vector3(1,6.8,3.5));box.ramp={position:new THREE.Vector3(0,3.4,0),width:2,length:7,height:3.4,rotation:0,thickness:.26};
  assert.equal(sweepSphere(new THREE.Vector3(0,3.5,.5),new THREE.Vector3(0,3.5,-.5),.065,[box]),null);
  const hit=sweepSphere(new THREE.Vector3(0,7,0),new THREE.Vector3(0,4,0),.065,[box]);assert.ok(hit);assert.ok(hit.normal.y>.8);assert.ok(hit.normal.z>0);assert.ok(hit.time>.4&&hit.time<.7);
+});
+
+
+test('an immediate throw click waits for the pin and releases once at the shared animation point',()=>{
+ const {equipment,weapon}=setup();equipment.select('frag');equipment.pullPin();
+ assert.equal(equipment.throwSelected('low'),true);
+ for(let i=0;i<30;i++){equipment.update(.02);weapon.update(.02);}
+ assert.equal(equipment.projectiles.length,0,'pin pull plus wind-up must finish before release');
+ for(let i=0;i<4;i++){equipment.update(.02);weapon.update(.02);}
+ assert.equal(equipment.projectiles.length,1);assert.equal(equipment.counts.frag,1);
+ assert.equal(weapon.throwMode,'low');
 });

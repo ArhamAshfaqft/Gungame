@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { soundEngine } from '../audio/SoundEngine.js';
+import {planVault} from './VaultTraversal.js';
 import { TACTICAL } from './TacticalTuning.js';
 
 // Keys the game owns while the pointer is locked. Tab and the Alt chords otherwise reach the browser.
@@ -11,7 +12,7 @@ const BROWSER_GUARD_KEYS = new Set([
 ]);
 
 export class MovementController {
-    constructor(camera, domElement) {
+    constructor(camera, domElement, { input = true } = {}) {
         this.camera = camera;
         this.domElement = domElement;
 
@@ -89,8 +90,7 @@ export class MovementController {
         // Mouse look delta for weapon sway
         this.mouseDelta = { x: 0, y: 0 };
 
-        this.setupPointerLock();
-        this.setupKeyboard();
+        if (input) { this.setupPointerLock(); this.setupKeyboard(); }
         this.camera.position.copy(this.position);
     }
 
@@ -279,14 +279,18 @@ export class MovementController {
     }
 
     handleJump() {
-        if (this.jumpCooldown > 0 || this.isCrouching || this.isSliding) return;
+        if(this.jumpCooldown>0||this.vault||this.isSliding)return;
+        this.vaultIntent=.24;this.vaultProbeTimer=0;
+        if(this.isGrounded&&this.keys.forward){
+            const vault=planVault(this.position,this.currentHeight,this.yaw,this.lastColliders,this.getSpeed());
+            if(vault){this.vault=vault;this.vaultIntent=0;this.jumpCooldown=.55;this.isGrounded=false;this.coyoteTime=0;soundEngine.playJump();return;}
+        }
+        if(this.isCrouching)return;
         if (this.isGrounded || this.coyoteTime > 0) {
             this.velocity.y = this.jumpForce;
             const speed = this.getSpeed();
-            if (speed > this.runSpeed) {
-                this.velocity.x *= this.runSpeed / speed;
-                this.velocity.z *= this.runSpeed / speed;
-            }
+            this.airSpeedLimit=Math.max(this.runSpeed,Math.min(this.sprintSpeed,speed));
+            if(speed>this.airSpeedLimit){this.velocity.x*=this.airSpeedLimit/speed;this.velocity.z*=this.airSpeedLimit/speed;}
             this.jumpCooldown = 0.55;
             this.isGrounded = false;
             this.coyoteTime = 0;
@@ -301,6 +305,14 @@ export class MovementController {
         this.sprintInterruptTimer = Math.max(0, this.sprintInterruptTimer - delta);
         this.sprintRecovery = Math.max(0, this.sprintRecovery - delta);
         this.jumpCooldown = Math.max(0, this.jumpCooldown - delta);
+
+        this.vaultIntent=Math.max(0,(this.vaultIntent||0)-delta);
+        this.vaultProbeTimer=Math.max(0,(this.vaultProbeTimer||0)-delta);
+        if(!this.vault&&this.vaultIntent>0&&this.keys.forward&&this.vaultProbeTimer===0){
+            this.vaultProbeTimer=.05;
+            const vault=planVault(this.position,this.currentHeight,this.yaw,colliders,this.getSpeed());
+            if(vault){this.vault=vault;this.vaultIntent=0;this.isGrounded=false;this.coyoteTime=0;}
+        }
 
         // 1. Horizontal Input & Direction
         const moveDir = new THREE.Vector3();
@@ -326,6 +338,11 @@ export class MovementController {
             !this.isCrouching && !this.keys.walk && this.isGrounded && !this.isAiming && !this.isReloading && !this.isThrowing &&
             !wantsLean && this.sprintInterruptTimer <= 0 && this.getAdsBlend() < 0.15;
         if (wasSprinting && !this.isSprinting) this.sprintRecovery = this.sprintReadyTime;
+
+        // Water occupies a bounded vertical volume, not the entire column below
+        // its surface. In particular, an upstairs tub cannot wet the room below.
+        const waterFeet = this.position.y - this.currentHeight;
+        this.isWading=!!colliders.waterAreas?.some(a=>this.position.x>a.minX&&this.position.x<a.maxX&&this.position.z>a.minZ&&this.position.z<a.maxZ&&waterFeet>=a.bottom-.03&&waterFeet<a.surface-.1);
 
         // 2. Movement state updates
         if (this.isSliding) {
@@ -358,7 +375,6 @@ export class MovementController {
             if (this.isReloading) targetSpeed = Math.min(targetSpeed, 2.4);
             if (this.keys.backward) targetSpeed *= 0.8;
             else if (!this.keys.forward && (this.keys.left || this.keys.right)) targetSpeed *= 0.9;
-            this.isWading=!!colliders.waterAreas?.some(a=>this.position.x>a.minX&&this.position.x<a.maxX&&this.position.z>a.minZ&&this.position.z<a.maxZ&&this.position.y-this.currentHeight<a.surface-.1);
             if(this.isWading)targetSpeed*=.58;
             const targetVx = moveDir.x * targetSpeed;
             const targetVz = moveDir.z * targetSpeed;
@@ -373,9 +389,9 @@ export class MovementController {
                 this.velocity.x += moveDir.x * airAccel * delta;
                 this.velocity.z += moveDir.z * airAccel * delta;
 
-                // Jumping never carries sprint-speed acceleration into the air.
+                // Preserve takeoff momentum, but never accelerate beyond that speed in air.
                 const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
-                const maxAirSpeed = this.runSpeed;
+                const maxAirSpeed = this.airSpeedLimit || this.runSpeed;
                 if (horizSpeed > maxAirSpeed) {
                     this.velocity.x = (this.velocity.x / horizSpeed) * maxAirSpeed;
                     this.velocity.z = (this.velocity.z / horizSpeed) * maxAirSpeed;
@@ -385,13 +401,22 @@ export class MovementController {
 
         // Keep feet fixed as eye height changes during a slide or crouch.
         const previousHeight = this.currentHeight;
-        const targetHeight = this.isSliding ? this.slideHeight
+        const targetHeight = this.vault ? this.vault.height : this.isSliding ? this.slideHeight
             : this.isCrouching ? this.crouchHeight
             : this.standHeight;
         this.currentHeight = THREE.MathUtils.damp(this.currentHeight, targetHeight, 14.0, delta);
         this.position.y += this.currentHeight - previousHeight;
 
+        if(this.vault){
+            const vault=this.vault;vault.time=Math.min(vault.duration,vault.time+delta);
+            const next=vault.at(vault.time/vault.duration);
+            if(delta>0)this.velocity.copy(next.sub(this.position).divideScalar(delta));
+            this.velocity.y+=this.gravity*delta;
+            if(vault.time>=vault.duration){this.vault=null;this.vaultExitVelocity=vault.exitVelocity;}
+        }
+
         // 3. Gravity
+        const wasGroundedBeforeMove = this.isGrounded;
         this.velocity.y -= this.gravity * delta;
 
         // 4. Position Integration & Collisions
@@ -419,6 +444,13 @@ export class MovementController {
             if (this.resolveBoxCollision(col, prevY - this.currentHeight)) onGroundNow = true;
         }
 
+        // Descending a slope moves the support surface down faster than a single
+        // gravity step. Follow a nearby lower tread instead of entering jump/fall
+        // between contacts. Jumps and larger ledges keep normal airborne physics.
+        if (!onGroundNow && wasGroundedBeforeMove && this.velocity.y <= 0) {
+            onGroundNow = this.snapDownToSupport(colliders, prevY - this.currentHeight);
+        }
+
         // Test feet after floor resolution, and only launch when descending.
         for (const pad of jumpPads) {
             const dist = Math.hypot(this.position.x - pad.x, this.position.z - pad.z);
@@ -430,6 +462,12 @@ export class MovementController {
                 soundEngine.playJumpPad();
                 break;
             }
+        }
+
+        if(this.vaultExitVelocity){
+            this.velocity.x=this.vaultExitVelocity.x;this.velocity.z=this.vaultExitVelocity.z;
+            this.airSpeedLimit=Math.max(this.runSpeed,this.vaultExitVelocity.length());
+            this.vaultExitVelocity=null;
         }
 
         // Update ground & coyote time
@@ -472,7 +510,7 @@ export class MovementController {
             if (this.stepDistance >= strideLength) {
                 this.stepDistance = 0;
                 if (!this.isCrouching) {
-                    soundEngine.playFootstep(this.isWalking ? 'walk' : this.isSprinting ? 'sprint' : 'run');
+                    soundEngine.playFootstep(this.isWalking ? 'walk' : this.isSprinting ? 'sprint' : 'run','Left',this.isWading);
                 }
             }
         } else {
@@ -526,15 +564,43 @@ export class MovementController {
         return Math.sign(distance) * allowed;
     }
 
-    resolveBoxCollision(box, previousFeet = this.position.y - this.currentHeight) {
+    snapDownToSupport(colliders, previousFeet, maxDrop = 0.35) {
+        const feet = this.position.y - this.currentHeight;
+        let support = -Infinity;
+        const consider = height => {
+            if (height <= feet + .001 && previousFeet >= height - .001 && feet - height <= maxDrop) support = Math.max(support, height);
+        };
+        consider(0);
+        for (const box of colliders) {
+            if (box.doorGroup) continue;
+            if (box.ramp) {
+                const ramp = box.ramp;
+                const local = this.position.clone().sub(ramp.position).applyAxisAngle(new THREE.Vector3(0,1,0), -ramp.rotation);
+                if (Math.abs(local.x) <= ramp.width / 2 && Math.abs(local.z) <= ramp.length / 2) consider(ramp.position.y + ramp.height * (.5 - local.z / ramp.length));
+            } else if (this.position.x >= box.min.x && this.position.x <= box.max.x && this.position.z >= box.min.z && this.position.z <= box.max.z) consider(box.max.y);
+        }
+        if (!Number.isFinite(support)) return false;
+        this.position.y = support + this.currentHeight;
+        this.velocity.y = 0;
+        return true;
+    }
+
+    resolveBoxCollision(box, previousFeet = this.position.y - this.currentHeight, allowStep = true) {
         if(box.doorGroup){
             // Resolve against the leaf in its own coordinates. Its world AABB
             // encloses empty space when rotated and must not become an invisible wall.
             const group=box.doorGroup,world=this.position.clone(),velocity=this.velocity.clone();
             group.updateWorldMatrix(true,false);this.position.copy(group.worldToLocal(world.clone()));
-            this.velocity.applyAxisAngle(new THREE.Vector3(0,1,0),-group.rotation.y);
-            const grounded=this.resolveBoxCollision(box.doorBounds,previousFeet-group.position.y);
-            this.position.copy(group.localToWorld(this.position.clone()));this.velocity.applyAxisAngle(new THREE.Vector3(0,1,0),group.rotation.y);
+            // Replicated leaves can carry a matrix without local transform
+            // fields. Read the world frame for both previous feet and velocity.
+            const rotation=group.getWorldQuaternion(new THREE.Quaternion());
+            const localFeet=group.worldToLocal(new THREE.Vector3(world.x,previousFeet,world.z)).y;
+            this.velocity.applyQuaternion(rotation.clone().invert());
+            // A hinged leaf (including its low fracture cells) is a moving
+            // obstacle, never a stair tread. Multiple cells otherwise ratchet
+            // the player upward as the leaf sweeps through the capsule.
+            const grounded=this.resolveBoxCollision(box.doorBounds,localFeet,false);
+            this.position.copy(group.localToWorld(this.position.clone()));this.velocity.applyQuaternion(rotation);
             if(this.position.distanceToSquared(world)<1e-12)this.velocity.copy(velocity);
             return grounded;
         }
@@ -574,7 +640,7 @@ export class MovementController {
         if (p.x > minX && p.x < maxX && p.z > minZ && p.z < maxZ) {
             // Step-up mechanic (if box is low like a ramp/step <= 0.5m)
             const stepUpHeight = box.max.y;
-            if (this.velocity.y <= 0 && (previousFeet >= stepUpHeight - 0.001 ||
+            if (allowStep && this.velocity.y <= 0 && (previousFeet >= stepUpHeight - 0.001 ||
                 (this.isGrounded && p.y - h >= stepUpHeight - 0.55))) {
                 p.y = stepUpHeight + h;
                 this.velocity.y = 0;
@@ -583,7 +649,7 @@ export class MovementController {
             }
 
             // Stop upward movement at the underside of platforms.
-            if (this.velocity.y > 0 && previousFeet + h <= box.min.y && p.y >= box.min.y) {
+            if (allowStep && this.velocity.y > 0 && previousFeet + h <= box.min.y && p.y >= box.min.y) {
                 p.y = box.min.y;
                 this.velocity.y = 0;
                 return false;

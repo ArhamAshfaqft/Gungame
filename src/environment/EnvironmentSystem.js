@@ -107,6 +107,14 @@ export class EnvironmentSystem{
   for(const mesh of r.parts)if(mesh!==r.object&&!r.object.getObjectById(mesh.id))r.object.attach(mesh);
  }
  createBody(r){
+  if(r.object.userData.impactFurniture&&!r.body){
+   // Bolted shelves move with the carcass as one compound body. Five separate
+   // locked bodies fighting over the same rack caused persistent vibration.
+   const frame=new Set(r.parts);
+   for(const child of this.records)if(child!==r&&!child.loose&&!child.body&&child.supports.length&&child.supports.every(s=>frame.has(s.mesh||s))&&this.attachmentsIntact(child)){
+    child.anchored=true;for(const part of child.parts){if(!r.parts.includes(part))r.parts.push(part);this.partRecords.set(part,r);}
+   }
+  }
   for(const other of this.records)if(other.joint&&(other===r||other.joint.bodyA===r.body)){this.world.removeConstraint(other.joint);other.joint=null;}
   this.detach(r);r.object.updateWorldMatrix(true,true);
   const door=r.object.userData.doorPanel;
@@ -142,6 +150,11 @@ export class EnvironmentSystem{
   // A released wall mounting needs a release tilt so a perfectly vertical
   // numerical bar doesn't balance forever on its narrow end after falling.
   if(r.wallMount&&!old)body.angularVelocity.set(.6,0,.3);
+  if(door&&r.forcedDetached&&!old){
+   // Prevent an upright thin leaf balancing numerically on its bottom edge.
+   // Gravity and collision determine the subsequent fall.
+   const tip=new T.Vector3(1.2,0,0).applyQuaternion(rotation);body.angularVelocity.set(tip.x,tip.y,tip.z);
+  }
   if(r.loose&&['glass','ceramic'].includes(r.parts[0].userData.physicalMaterial))body.addEventListener('collide',event=>{if(Math.abs(event.contact.getImpactVelocityAlongNormal())>3)this.breakQueue.add(r);});
   body.addEventListener('collide',event=>{if(r.joint&&Math.abs(event.contact.getImpactVelocityAlongNormal())>1)r.joint.bodyA.wakeUp();});
   this.staticRevision=-1;
@@ -169,7 +182,7 @@ export class EnvironmentSystem{
   }
   if(rebuilt)for(const child of this.records)if(child.body&&!child.joint&&!child.loose&&!child.forcedDetached&&child!==r&&child.supports.some(s=>this.partRecords.get(s.mesh||s)===r||this.byObject.get(s.mesh||s)===r))this.activate(child);
  }
- hit(mesh,point,direction,strength,{blast=false}={}){
+ hit(mesh,point,direction,strength,{blast=false,slot=null}={}){
   this.lastImpact=point.clone();
   let r=this.partRecords.get(mesh);
   if(r){
@@ -180,7 +193,16 @@ export class EnvironmentSystem{
    // Mesh damage is not the same as losing an attachment. Mounted shelves and
    // doors remain mounted until their actual connection fails. Light shots do
    // not turn an entire bookcase into an unanchored rigid body.
-   if(r.body||r.loose||this.needsPhysics(r)||blast&&loose){const force=direction.clone().multiplyScalar(Math.min(12,strength*.015)*(blast?2:1));this.activate(r,force,point);}
+   const furniture=r.object.userData.impactFurniture;
+   if(furniture&&!blast&&(strength>=80||slot&&slot!=='pistol')){r.impactStress=(r.impactStress||0)*Math.exp(-(this.clock-(r.impactTime||0))/1.5)+strength;r.impactTime=this.clock;}
+   const heavyFurniture=furniture&&(blast&&strength>75||!blast&&(strength>=80||slot&&slot!=='pistol')&&r.impactStress>=180);
+   if(r.body||r.loose||this.needsPhysics(r)||blast&&loose||heavyFurniture){
+    // Blast impulse scales with assembly mass; a tiny point impulse used to
+    // shake books without transferring enough momentum to the heavy rack.
+    this.activate(r);const magnitude=furniture&&blast?Math.min(r.body?.mass||30,160)*Math.min(5,strength*.025):furniture&&heavyFurniture?Math.min(r.body?.mass||30,160)*Math.min(.6,r.impactStress*.0015):Math.min(12,strength*.015)*(blast?2:1);
+    const force=direction.clone();if(furniture&&blast){force.y=Math.max(-.15,Math.min(.2,force.y));force.normalize();}
+    this.activate(r,force.multiplyScalar(magnitude),point);
+   }
    else if(changed)r.signature=this.signature(r);
   }
   // Direct connections react now; indirect floor support also has a scan fallback.
@@ -194,11 +216,13 @@ export class EnvironmentSystem{
   return true;
  }
  attachmentsIntact(r){
+  if(r.object.userData.doorPanel&&!r.object.userData.doorPanel.hingeSupported())return false;
   if(!r.supports.length)return false;
   return r.supports[r.supportMode==='all'?'every':'some'](connection=>this.connectionIntact(connection));
  }
  isSupported(r){
   if(r.anchored)return true;
+  if(r.object.userData.doorPanel&&!r.object.userData.doorPanel.hingeSupported())return false;
   if(r.supports.length)return r.supports[r.supportMode==='all'?'every':'some'](connection=>{
    const m=connection.mesh||connection;
    if(!this.connectionIntact(connection))return false;const owner=this.partRecords.get(m)||this.byObject.get(m);if(owner?.body)return false;
@@ -215,10 +239,19 @@ export class EnvironmentSystem{
  }
  syncStatic(){
   const awake=this.records.filter(r=>r.body&&r.body.sleepState!==Body.SLEEPING);if(!awake.length)return;
-  const wanted=new Set(),queries=new Map();
-  for(const r of awake){const p=r.body.position;for(let x=-2;x<=2;x++)for(let z=-2;z<=2;z++){const xx=Math.floor(p.x/2)+x,zz=Math.floor(p.z/2)+z,key=`${xx},${zz}`,old=queries.get(key);if(old){old.min=Math.min(old.min,p.y-5);old.max=Math.max(old.max,p.y+4);}else queries.set(key,{x:xx*2+.5,z:zz*2+.5,min:p.y-5,max:p.y+4});}}
+  // Static neighbours depend on occupied spatial cells and structural edits,
+  // not on every book's tiny contact motion. Keep a conservative 2m cell margin.
+  const cells=new Set(awake.map(r=>{const p=r.body.position;return `${Math.floor(p.x/2)},${Math.floor(p.y/2)},${Math.floor(p.z/2)}`;}));
+  const key=[...cells].sort().join(';'),revision=this.colliders.staticSupportRevision||0;
+  if(this.staticCellKey===key&&this.staticCellRevision===revision&&this.staticCellCount===this.colliders.length)return;
+  this.staticCellKey=key;this.staticCellRevision=revision;this.staticCellCount=this.colliders.length;
+  const wanted=new Set(),queries=new Map(),occupied=new Map(),current=new Set(this.colliders);
+  // Expand a pile's shared neighbourhood once per occupied bucket, preserving
+  // the complete vertical range of every body in it.
+  for(const cell of cells){const [x,y,z]=cell.split(',').map(Number),key=`${x},${z}`,old=occupied.get(key);if(old){old.min=Math.min(old.min,y*2-5);old.max=Math.max(old.max,y*2+6);}else occupied.set(key,{x,z,min:y*2-5,max:y*2+6});}
+  for(const cell of occupied.values())for(let x=-2;x<=2;x++)for(let z=-2;z<=2;z++){const xx=cell.x+x,zz=cell.z+z,key=`${xx},${zz}`,old=queries.get(key);if(old){old.min=Math.min(old.min,cell.min);old.max=Math.max(old.max,cell.max);}else queries.set(key,{x:xx*2+.5,z:zz*2+.5,min:cell.min,max:cell.max});}
   for(const q of queries.values())for(const box of supportCandidates(this.map,new T.Vector3(q.x,0,q.z))){if(box.dynamicEnvironment||box.max.y<q.min||box.min.y>q.max)continue;wanted.add(box);}
-  for(const [box,record] of this.staticBodies)if(!wanted.has(box)||!this.colliders.includes(box)){this.world.removeBody(record.body);this.staticBodies.delete(box);}
+  for(const [box,record] of this.staticBodies)if(!wanted.has(box)||!current.has(box)){this.world.removeBody(record.body);this.staticBodies.delete(box);}
   for(const box of wanted){
    const mesh=box.supportMesh;if(mesh&&!mesh.visible)continue;
    const signature=`${box.min.toArray()}:${box.max.toArray()}`,previous=this.staticBodies.get(box);if(previous?.signature===signature)continue;if(previous)this.world.removeBody(previous.body);
@@ -276,7 +309,7 @@ export class EnvironmentSystem{
   // hold awake child bodies in a solver tug-of-war. Real impacts wake the parent.
   for(const r of this.records)if(r.joint instanceof LockConstraint&&r.joint.bodyA.sleepState===Body.SLEEPING)r.body.sleep();
   for(const r of this.pending){if(!r.parts.some(m=>m.visible)){this.pending.delete(r);continue;}this.activate(r);if(r.body)this.pending.delete(r);if(this.pending.size&&this.records.filter(x=>x.body&&x.body.sleepState!==Body.SLEEPING).length>=this.maxAwake)break;}
-  for(const r of this.records){if(!r.body)continue;const body=r.body,area=this.colliders.waterAreas?.find(a=>body.position.x>a.minX&&body.position.x<a.maxX&&body.position.z>a.minZ&&body.position.z<a.maxZ);
+  for(const r of this.records){if(!r.body)continue;const body=r.body,area=this.colliders.waterAreas?.find(a=>body.position.x>a.minX&&body.position.x<a.maxX&&body.position.z>a.minZ&&body.position.z<a.maxZ&&body.position.y+r.height/2>a.bottom&&body.position.y-r.height/2<a.surface);
    r.buoyancy=0;if(area){if(r.waterLevel!==undefined&&Math.abs(r.waterLevel-area.surface)>.015)body.wakeUp();r.waterLevel=area.surface;const submerged=T.MathUtils.clamp((area.surface-body.position.y+r.height/2)/Math.max(.02,r.height),0,1);if(submerged>0){r.buoyancy=1000*r.volume*9.81*submerged;body.velocity.scale(Math.exp(-dt*submerged*2.5),body.velocity);body.angularVelocity.scale(Math.exp(-dt*submerged*3),body.angularVelocity);}}
   }
   const awake=this.records.some(r=>r.body&&r.body.sleepState!==Body.SLEEPING);

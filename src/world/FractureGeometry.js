@@ -88,9 +88,26 @@ export function createFracturedPanel(width, height, thickness, material, cols = 
     geometry.computeBoundingBox(); geometry.computeBoundingSphere();
     const mesh = new THREE.Mesh(geometry, material);
     const raycast = mesh.raycast.bind(mesh);
+    const inverse = new THREE.Matrix4(), localRay = new THREE.Ray(), bounds = new THREE.Box3();
     mesh.raycast = (ray, hits) => {
         const first = hits.length;
-        raycast(ray, hits);
+        // Each cell retains a contiguous triangle range, even after puncturing.
+        // Test its bounds first instead of scanning the entire damaged floor for
+        // every bullet and every debris support sample. Keep global face indices.
+        inverse.copy(mesh.matrixWorld).invert();localRay.copy(ray.ray).applyMatrix4(inverse);
+        const g=mesh.geometry, start=g.drawRange.start, count=g.drawRange.count, end=Math.min(g.index.count,start+count);
+        try {
+            for(const piece of pieces){
+                const a=Math.max(start,piece.start),b=Math.min(end,piece.start+piece.count);
+                if(b<=a)continue;
+                bounds.min.set(piece.bounds.min.x,piece.bounds.min.y,-thickness/2);
+                bounds.max.set(piece.bounds.max.x,piece.bounds.max.y,thickness/2);
+                // Vertex buffers are Float32; include their rounding at seams.
+                bounds.expandByScalar(1e-6);
+                if(!localRay.intersectsBox(bounds))continue;
+                g.setDrawRange(a,b-a);raycast(ray,hits);
+            }
+        } finally {g.setDrawRange(start,count);}
         for (let i = first; i < hits.length; i++) hits[i].instanceId = (mesh.userData.fractureFacePieces||facePieces)[hits[i].faceIndex];
     };
     return { mesh, pieces };

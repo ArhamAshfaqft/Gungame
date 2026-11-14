@@ -1,0 +1,32 @@
+import {chromium} from 'playwright';
+const browser=await chromium.launch({channel:'chrome',headless:true});
+const page=await browser.newPage({viewport:{width:1280,height:800}});const errors=[];
+page.on('pageerror',e=>errors.push(e.message));
+await page.goto('http://127.0.0.1:5181/?map=training');
+await page.waitForFunction(()=>window.__fastSnipe?.thirdPerson?.rig?.animator && !document.querySelector('#pose-inspector').disabled,{timeout:60000});
+const result=await page.evaluate(async()=>{
+ const g=window.__fastSnipe;
+ g.thirdPerson.enabled=true;g.weapon.thirdPerson=true;
+ g.movement.isCrouching=true;g.movement.effectiveLean=.8;
+ g.thirdPerson.update(.016);
+ const capture=()=>JSON.stringify(g.thirdPerson.rig.object.toJSON().object);
+ const before=capture();
+ g.poseInspector.toggle();const frozen=capture();
+ await new Promise(r=>setTimeout(r,400));
+ const after=capture();
+ const start=g.thirdPerson.camera.position.clone();
+ return {active:g.poseInspector.active,unchangedOnEnter:before===frozen,frozen:after===frozen,visible:g.thirdPerson.rig.object.visible,menuHidden:g.startScreen.classList.contains('hidden'),start:start.toArray()};
+});
+await page.mouse.move(700,380);await page.mouse.down();await page.mouse.move(900,440,{steps:10});await page.mouse.up();
+result.cameraMoved=await page.evaluate(start=>window.__fastSnipe.thirdPerson.camera.position.distanceTo({x:start[0],y:start[1],z:start[2]})>.1,result.start);
+await page.screenshot({path:'E:/Cache/Temp/pose-inspector-check.png'});
+await page.keyboard.press('p');
+result.exited=await page.evaluate(()=>!window.__fastSnipe.poseInspector.active&&window.__fastSnipe.thirdPerson.enabled);
+result.firstPerson=await page.evaluate(async()=>{
+ const g=window.__fastSnipe;document.exitPointerLock();g.thirdPerson.enabled=false;g.weapon.thirdPerson=false;g.weapon.isAiming=true;g.weapon.adsProgress=1;g.thirdPerson.update(0);
+ g.poseInspector.toggle();const bones=()=>JSON.stringify(Object.values(g.thirdPerson.rig.bones).map(b=>[b.position.toArray(),b.quaternion.toArray()]));const before=bones();await new Promise(r=>setTimeout(r,150));
+ const frozen=before===bones();const fullBodyVisible=g.thirdPerson.rig.object.visible;
+ g.poseInspector.toggle();return {frozen,fullBodyVisible,restored:!g.thirdPerson.enabled&&!g.weapon.thirdPerson};
+});
+result.errors=errors;console.log(JSON.stringify(result));await browser.close();
+if(errors.length||!result.frozen||!result.unchangedOnEnter||!result.cameraMoved||!result.exited||!Object.values(result.firstPerson).every(Boolean))process.exitCode=1;

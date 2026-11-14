@@ -1,3 +1,5 @@
+import {attachMuzzleFlash,updateMuzzleFlash,muzzleWorldPosition} from '../models/MuzzleFlash.js';
+import {editedViewPose,editedThrowablePose} from '../studio/ViewPoseEdits.js';
 import * as THREE from 'three';
 import {projectileEnergy,transportEnergy} from '../world/PhysicalMaterials.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -7,9 +9,12 @@ import { createViewArms } from '../models/TacticalOperator.js';
 import { createSwatRig } from '../models/SwatRig.js';
 import { loadSniperModel } from '../models/SniperModel.js';
 import { loadPistolModel } from '../models/PistolModel.js';
+import {loadAssaultRifleModel,applyAssaultMechanics,assaultReloadMotion} from '../models/AssaultRifleModel.js';
 import { WEAPONS, createAmmoStores, environmentalDamage } from './WeaponProfiles.js';
 import { readLibrary, blendPose, POSE_STORAGE_KEY, throwablePose, GRENADE_FRAME } from '../studio/PoseLibrary.js';
 import { loadViewActions, sampleViewAction } from '../models/ViewActions.js';
+import { loadPistolHold, samplePistolHold, pistolHoldWeight } from '../models/PistolHold.js';
+import {updateHolographicSight,pivotHolographicLean} from '../models/HolographicSight.js';
 import { applyPistolMechanics } from '../models/PistolReload.js';
 import { sampleReloadSequence, addTimelinePose, applySequenceFraming, applySequenceMechanics, sequenceMotion } from '../studio/ReloadTimeline.js';
 
@@ -85,7 +90,7 @@ export class SniperWeapon {
     }
 
     refreshSavedPoses() {
-        const saved = readLibrary();
+        const saved = this.projectPoseLibrary?.projectRevision ? this.projectPoseLibrary : readLibrary(globalThis.localStorage,this.projectPoseLibrary);
         if (JSON.stringify(saved) === JSON.stringify(this.poseLibrary)) return;
         this.poseLibrary = saved;
         this.poseRevision = (this.poseRevision || 0) + 1;
@@ -122,6 +127,7 @@ export class SniperWeapon {
         if (this.grenadeEquipped && !this.equipment?.stow()) return false;
         if (!WEAPONS[slot] || slot === this.activeSlot || this.utilityTimer > 0 || this.movement.isDisabled) return false;
         this.cancelReload();
+        this.triggerHeld = false;
         this.pendingShotTime = 0;
         this.isAiming = false;
         this.boltActive = false;
@@ -141,6 +147,7 @@ export class SniperWeapon {
     beginUtility() {
         if (this.utilityTimer > 0 || this.switchTimer > 0 || this.movement.isDisabled) return false;
         this.cancelReload();
+        this.triggerHeld = false;
         this.isAiming = false;
         this.pendingShotTime = 0;
         this.utilityTimer = 0.7;
@@ -170,6 +177,8 @@ export class SniperWeapon {
             this.pistolModel = await loadPistolModel();
             this.pistolModel.visible = false;
             this.weaponGroup.add(this.pistolModel);
+            this.assaultModel=await loadAssaultRifleModel();this.assaultModel.visible=false;this.weaponGroup.add(this.assaultModel);
+            for(const [model,slot] of [[this.rifleModel,'primary'],[this.pistolModel,'pistol'],[this.assaultModel,'assault']])attachMuzzleFlash(model,slot);
             await this.loadHands();
 
         } catch (err) {
@@ -215,6 +224,8 @@ export class SniperWeapon {
         this.weaponGroup.add(this.arms);
         try { this.viewActionPack = await loadViewActions(); }
         catch (error) { console.warn('Using procedural first-person actions.', error); }
+        try { this.pistolHoldPack = await loadPistolHold(); }
+        catch (error) { console.warn('Using the saved pistol holding pose.', error); }
         this.armsRig.updateView(0, this);
     }
 
@@ -222,6 +233,7 @@ export class SniperWeapon {
         window.addEventListener('mousedown', (e) => {
             if (!this.movement.isLocked || this.grenadeEquipped) return;
             if (e.button === 0) {
+                this.triggerHeld = true;
                 this.shoot();
             } else if (e.button === 2) {
                 this.isAiming = true;
@@ -230,6 +242,7 @@ export class SniperWeapon {
         });
 
         window.addEventListener('mouseup', (e) => {
+            if(e.button===0)this.triggerHeld=false;
             if (this.grenadeEquipped) return;
             if (e.button === 2) {
                 this.isAiming = false;
@@ -239,7 +252,7 @@ export class SniperWeapon {
 
         window.addEventListener('contextmenu', (e) => e.preventDefault());
 
-        const clearAim = () => { this.isAiming = false; this.pendingShotTime = 0; };
+        const clearAim = () => { this.isAiming = false; this.pendingShotTime = 0; this.triggerHeld=false; };
         window.addEventListener('focus', () => this.refreshSavedPoses());
         document.addEventListener('visibilitychange', () => { if (!document.hidden) this.refreshSavedPoses(); });
         window.addEventListener('blur', clearAim);
@@ -252,6 +265,7 @@ export class SniperWeapon {
             if (!this.movement.isLocked || e.repeat || this.movement.isDisabled) return;
             if (e.code === 'Digit1') this.switchWeapon('primary');
             if (e.code === 'Digit2') this.switchWeapon('pistol');
+            if (e.code === 'Digit6') this.switchWeapon('assault');
             if (this.movement.isLocked && e.code === 'KeyR' && !this.isReloading && this.magAmmo < this.maxMag && this.reserveAmmo > 0) {
                 this.reload();
             }
@@ -278,10 +292,11 @@ export class SniperWeapon {
         this.magAmmo--;
         this.canShoot = false;
         this.fireCooldown = this.fireRate;
-        this.fireActionRemaining = this.activeSlot === 'pistol' ? 0.18 : 0.65;
+        this.fireActionRemaining = this.profile.fireActionTime || (this.activeSlot === 'pistol' ? 0.18 : 0.65);
 
         // 1. Play Heavy Sniper Crack Audio
         if (this.activeSlot === 'pistol') soundEngine.playPistolShot();
+        else if(this.activeSlot==='assault')soundEngine.playAssaultShot();
         else { soundEngine.playSniperShot(); soundEngine.playBoltCycle(); }
         const recoil = this.profile.recoil;
 
@@ -309,14 +324,16 @@ export class SniperWeapon {
         this.pendingShotTime = 0;
         this.reloadProgress = 0;
         this.reloadSequence = this.activeSlot === 'pistol' ? structuredClone(this.poseLibrary.reloadSequence) : null;
-        this.reloadDuration = this.reloadSequence?.duration || this.profile.reloadTime;
+        this.reloadDuration = this.network ? this.profile.reloadTime : this.reloadSequence?.duration || this.profile.reloadTime;
         this.reloadRemaining = this.reloadDuration;
         this.reloadEventsFired = new Set();
         this.isAiming = false;
         if (!this.reloadSequence) soundEngine.playReload(this.activeSlot,this.reloadDuration);
+        this.network?.reload(this);
     }
 
     performRaycast() {
+        if(this.network){this.network.fire(this);return;}
         const moving = this.movement.getSpeed?.() > 0.5;
         const hipSpread = this.movement.isCrouching ? 0.014 : moving ? 0.035 : 0.022;
         const aimSpread = moving ? 0.0012 : 0.00045;
@@ -330,7 +347,9 @@ export class SniperWeapon {
         raycaster.far = this.profile.range;
         this.scene.updateMatrixWorld(true);
         this.camera.updateMatrixWorld(true);
-        raycaster.setFromCamera(new THREE.Vector2(spreadX, spreadY), this.camera);
+        const aimingCamera=this.aimingCamera?.()||this.camera;
+        aimingCamera.updateMatrixWorld(true);
+        raycaster.setFromCamera(new THREE.Vector2(spreadX, spreadY), aimingCamera);
 
         const shootables = [];
         this.scene.traverseVisible((obj) => {
@@ -347,6 +366,13 @@ export class SniperWeapon {
             }
         });
 
+        // Chase-camera crosshair selects the target; the eye ray still checks
+        // intervening cover so looking around a corner cannot shoot through it.
+        if(aimingCamera!==this.camera){
+            const target=raycaster.intersectObjects(shootables,false)[0]?.point||raycaster.ray.at(this.profile.range,new THREE.Vector3());
+            const eye=this.camera.getWorldPosition(new THREE.Vector3());
+            raycaster.set(eye,target.clone().sub(eye).normalize());
+        }
         const intersects = raycaster.intersectObjects(shootables, false);
         const origin = new THREE.Vector3().setFromMatrixPosition(this.camera.matrixWorld);
         const farPoint = origin.clone().addScaledVector(raycaster.ray.direction, this.profile.range);
@@ -383,7 +409,7 @@ export class SniperWeapon {
             if (bot) {
                 const isHeadshot = hit.object.userData.isHead || hit.point.y > bot.position.y + 1.5;
                 const damage = Math.round((isHeadshot ? this.profile.headDamage : this.profile.bodyDamage) * damageMultiplier);
-                bot.takeDamage(damage, isHeadshot, raycaster.ray.direction,hit.point,this.activeSlot);
+                bot.takeDamage(damage, isHeadshot, raycaster.ray.direction,hit.point,this.activeSlot,{distance:hit.distance,targets:shootables});
                 soundEngine.playHitmarker(isHeadshot);
                 window.__triggerHitmarker?.(isHeadshot, damage, hit.point);
             } else if(this.surfaceDamage){
@@ -397,15 +423,20 @@ export class SniperWeapon {
             break;
         }
 
-        this.createBulletTracer(origin, hitPoint);
+        this.createBulletTracer(this.visualMuzzlePosition?.(this.activeSlot)||muzzleWorldPosition(this.activeSlot==='pistol'?this.pistolModel:this.activeSlot==='assault'?this.assaultModel:this.rifleModel)||origin, hitPoint, this.activeSlot);
     }
 
-    createBulletTracer(start, end) {
+    firstPersonMuzzlePosition(slot=this.activeSlot){
+        return muzzleWorldPosition(slot==='pistol'?this.pistolModel:slot==='assault'?this.assaultModel:this.rifleModel);
+    }
+
+    createBulletTracer(start, end, localSlot = null) {
         const dir = new THREE.Vector3().subVectors(end, start);
-        const length = dir.length();
-        const geom = new THREE.CylinderGeometry(0.015, 0.015, length, 8);
+        const length = Math.min(8,dir.length());
+        if(length<.001)return;
+        const geom = new THREE.CylinderGeometry(0.0025, 0.0025, 1, 6);
         geom.rotateX(Math.PI / 2);
-        geom.translate(0, 0, length / 2);
+        geom.translate(0, 0, .5);
 
         const mat = new THREE.MeshBasicMaterial({
             color: 0xffd277,
@@ -415,10 +446,20 @@ export class SniperWeapon {
 
         const mesh = new THREE.Mesh(geom, mat);
         mesh.position.copy(start);
+        mesh.scale.z=length;
         mesh.lookAt(end);
         this.scene.add(mesh);
 
-        this.tracers.push({ mesh, life: 0.22, maxLife: 0.22 });
+        this.tracers.push({ mesh, life: 0.065, maxLife: 0.065, localSlot, end:end.clone() });
+    }
+
+    syncTracerOrigins() {
+        // Resolve after the visible body/weapon pose, including frozen inspection.
+        for(const tracer of this.tracers){
+            if(!tracer.localSlot)continue;
+            const start=this.visualMuzzlePosition?.(tracer.localSlot);if(!start)continue;
+            tracer.mesh.position.copy(start);tracer.mesh.scale.z=Math.min(8,start.distanceTo(tracer.end));tracer.mesh.lookAt(tracer.end);
+        }
     }
 
     createImpactSparks(pos, normal) {
@@ -454,6 +495,7 @@ export class SniperWeapon {
     }
 
     update(delta) {
+        const automaticCooldown=this.fireCooldown-delta;
         this.fireActionRemaining = Math.max(0, (this.fireActionRemaining || 0) - delta);
         this.grenadeDrawRemaining = Math.max(0, (this.grenadeDrawRemaining || 0) - delta);
         if (this.pendingShotTime > 0) {
@@ -495,6 +537,13 @@ export class SniperWeapon {
             if (this.boltDelay <= 0) { this.boltActive = true; this.boltProgress = 0; }
         }
 
+        if(this.profile.automatic&&this.triggerHeld&&this.movement.isLocked&&!this.grenadeEquipped){
+            const before=this.magAmmo;this.shoot();
+            // Retain fractional cooldown at ordinary frame rates, without
+            // emitting a catch-up burst after a slow frame.
+            if(this.magAmmo<before)this.fireCooldown=Math.max(0,this.fireCooldown+Math.max(-this.fireRate,Math.min(0,automaticCooldown)));
+        }
+
         // 2. Bolt Action Cycle Animation
         if (this.boltActive) {
             this.boltProgress += delta * 1.6;
@@ -520,18 +569,25 @@ export class SniperWeapon {
         this.weaponGroup.visible = !scoped && this.switchTimer < 0.18 && !this.movement.isDisabled;
         if (this.rifleModel) this.rifleModel.visible = !this.grenadeEquipped && this.activeSlot === 'primary' && this.adsProgress <= 0.82 && this.utilityTimer <= 0;
         if (this.pistolModel) this.pistolModel.visible = !this.grenadeEquipped && this.activeSlot === 'pistol' && this.utilityTimer <= 0;
+        if (this.assaultModel) this.assaultModel.visible = !this.grenadeEquipped && this.activeSlot === 'assault' && this.utilityTimer <= 0;
 
         // 4. Viewmodel Base Position & Rotation Interpolation
         this.currentPos.lerpVectors(this.hipPos, this.adsPos, this.adsProgress);
         this.currentRot.x = THREE.MathUtils.lerp(this.hipRot.x, this.adsRot.x, this.adsProgress);
         this.currentRot.y = THREE.MathUtils.lerp(this.hipRot.y, this.adsRot.y, this.adsProgress);
         this.currentRot.z = THREE.MathUtils.lerp(this.hipRot.z, this.adsRot.z, this.adsProgress);
-        if (!this.poseOverrides || this.overrideSlot !== this.activeSlot || this.overrideAim !== this.adsProgress || this.overrideRevision !== this.poseRevision) {
-            this.poseOverrides = blendPose(this.poseLibrary.poses[`${this.activeSlot}:hip`], this.poseLibrary.poses[`${this.activeSlot}:aim`], this.adsProgress);
+        this.viewPoseTime=(this.viewPoseTime||0)+delta;
+        const firingPose=!!this.studioFireState||(this.fireActionRemaining>0&&!this.isReloading);
+        if (!this.basePoseOverrides || this.overrideFire!==firingPose || this.overrideSlot !== this.activeSlot || this.overrideAim !== this.adsProgress || this.overrideRevision !== this.poseRevision) {
+            this.basePoseOverrides = blendPose(this.poseLibrary.poses[`${this.activeSlot}:${firingPose?'fire':'hip'}`]||this.poseLibrary.poses[`${this.activeSlot}:hip`], this.poseLibrary.poses[`${this.activeSlot}:aim`], this.adsProgress);
+            this.overrideFire=firingPose;
             this.overrideSlot = this.activeSlot;
             this.overrideAim = this.adsProgress;
             this.overrideRevision = this.poseRevision;
         }
+        this.poseOverrides=this.basePoseOverrides;
+        const editedPose=!this.grenadeEquipped&&editedViewPose(this,this.poseOverrides);
+        if(editedPose){this.poseOverrides=editedPose;this.viewEditStamp=(this.viewEditStamp||0)+1;}
         this.currentPos.add(new THREE.Vector3().fromArray(this.poseOverrides.weapon.position));
         this.currentRot.x += this.poseOverrides.weapon.rotation[0];
         this.currentRot.y += this.poseOverrides.weapon.rotation[1];
@@ -542,8 +598,12 @@ export class SniperWeapon {
                 pinProgress: this.pinProgress || 0, throwProgress: this.throwProgress || 0,
                 mode: this.throwMode, throwing: this.utilityTimer > 0,
             });
+            const editedGrenade=editedThrowablePose(this,this.grenadePoseOverrides);if(editedGrenade){this.grenadePoseOverrides=editedGrenade;this.viewEditStamp=(this.viewEditStamp||0)+1;}
             this.currentPos.fromArray(GRENADE_FRAME).add(new THREE.Vector3().fromArray(this.grenadePoseOverrides.weapon.position));
             this.currentRot.set(...this.grenadePoseOverrides.weapon.rotation);
+            const draw=Math.min(1,(this.grenadeDrawRemaining||0)/.4);
+            const drawEase=draw*draw*(3-2*draw);
+            this.currentPos.y-=.16*drawEase;this.currentRot.x+=.2*drawEase;
         }
 
         // 5. Tactical Slide Tilt (COD gun roll during slide)
@@ -609,7 +669,7 @@ export class SniperWeapon {
 
         // Crouching lowers the rifle a little with the body.
         this.crouchBlend = THREE.MathUtils.damp(this.crouchBlend || 0, this.movement.isCrouching ? 1 : 0, 10, delta);
-        this.currentPos.y -= this.crouchBlend * 0.03;
+        this.currentPos.y -= this.crouchBlend * 0.03 * (1-this.adsProgress);
 
         // 10. Update the shared weapon and arms rig.
         this.weaponGroup.position.set(
@@ -624,12 +684,25 @@ export class SniperWeapon {
             this.currentRot.z + this.recoilRot.z + boltRollZ + leanRoll
         );
 
+        if(this.activeSlot==='assault'&&!this.grenadeEquipped) pivotHolographicLean(this.weaponGroup,this.assaultModel,leanRoll,this.adsProgress);
         this.viewMotion = this.getViewMotion();
+        this.pistolHoldTime = (this.pistolHoldTime || 0) + delta;
+        const holdTarget = this.activeSlot === 'pistol' && !this.grenadeEquipped && !this.isReloading && this.switchTimer <= 0 ? 1 : 0;
+        this.pistolHoldBlend = delta === 0 ? holdTarget : THREE.MathUtils.damp(this.pistolHoldBlend || 0, holdTarget, 18, delta);
+        if (Math.abs(this.pistolHoldBlend - holdTarget) < .0001) this.pistolHoldBlend = holdTarget;
+        this.pistolHold = samplePistolHold(this.pistolHoldPack, this.pistolHoldTime,
+            pistolHoldWeight({ activeSlot: this.activeSlot, grenadeEquipped: this.grenadeEquipped,
+                adsProgress: this.adsProgress, blend: this.pistolHoldBlend }));
         const reloadSample = this.activeSlot === 'pistol' && this.isReloading ? sampleReloadSequence(this.reloadSequence || this.poseLibrary.reloadSequence, this.reloadProgress * (this.reloadDuration || this.profile.reloadTime)) : null;
         this.reloadPoseOverrides = reloadSample ? addTimelinePose(this.poseOverrides, reloadSample.pose) : null;
         applyPistolMechanics(this.pistolModel, 0,
             this.activeSlot === 'pistol' && this.fireActionRemaining > 0 && !this.isReloading ? 1 - this.fireActionRemaining / 0.18 : null);
+        applyAssaultMechanics(this.assaultModel,this.activeSlot==='assault'&&this.isReloading?this.reloadProgress:0,this.activeSlot==='assault'&&this.fireActionRemaining>0?1-this.fireActionRemaining/this.profile.fireActionTime:0);
+        const shotElapsed=(this.profile.fireActionTime||(this.activeSlot==='pistol'?.18:.65))-this.fireActionRemaining;
+        for(const [model,slot] of [[this.rifleModel,'primary'],[this.pistolModel,'pistol'],[this.assaultModel,'assault']])updateMuzzleFlash(model,shotElapsed,this.activeSlot===slot&&!this.grenadeEquipped&&!this.isReloading&&this.fireActionRemaining>0);
+        updateHolographicSight(this.assaultModel,this.viewmodelCamera);
         this.armsRig?.updateView(delta, this);
+        if(this.grenadeEquipped)this.equipment?.syncGrip?.();
         if (reloadSample) applySequenceMechanics(this.pistolModel, this.armsRig, reloadSample);
 
         // 11. Update Tracers
@@ -668,15 +741,11 @@ export class SniperWeapon {
     }
 
     getViewMotion() {
+        if(!this.grenadeEquipped&&this.activeSlot==='assault')return this.isReloading?assaultReloadMotion(this.reloadProgress||0):null;
         if (!this.grenadeEquipped && this.activeSlot === 'pistol' && this.isReloading) return sequenceMotion(this.reloadProgress || 0);
         if (this.viewActionsEnabled === false) return null;
         const prefix = this.activeSlot === 'pistol' ? 'pistol' : 'sniper';
-        if (this.grenadeEquipped) {
-            if (this.utilityTimer > 0) return sampleViewAction(this.viewActionPack, 'grenadeThrow', this.throwProgress || 0, this.throwMode === 'low' ? 0.55 : 0.85);
-            if (this.pinProgress > 0 && this.pinProgress < 1) return sampleViewAction(this.viewActionPack, 'grenadePin', this.pinProgress, 0.8);
-            if (this.grenadeDrawRemaining > 0) return sampleViewAction(this.viewActionPack, 'grenadeDraw', 1 - this.grenadeDrawRemaining / 0.4, 0.7);
-            return null;
-        }
+        if (this.grenadeEquipped) return null; // Dedicated grip/item path; imported offsets would separate the fingers from the grenade.
         if (this.isReloading) return sampleViewAction(this.viewActionPack, `${prefix}Reload`, this.reloadProgress || 0);
         if (this.switchTimer > 0) return sampleViewAction(this.viewActionPack, `${prefix}Draw`, 1 - this.switchTimer / 0.28, 0.75);
         if (this.fireActionRemaining > 0) return sampleViewAction(this.viewActionPack, `${prefix}Fire`, 1 - this.fireActionRemaining / (this.activeSlot === 'pistol' ? 0.18 : 0.65), 0.5);

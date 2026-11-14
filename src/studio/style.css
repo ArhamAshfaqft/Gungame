@@ -23,4 +23,49 @@
 #peek-options input[type=range]{width:100%;accent-color:#e9b85a}
 #peek-copy-stance{width:100%;margin-top:14px;white-space:normal}
 #peek-options~.muted,.field input[type=number]{color:#aebbc6}
+#guided-setup{width:100%;margin-top:14px;white-space:normal}
+#grip-guide[hidden]{display:none}
+.guided-grip .right-panel>:not(#grip-guide){display:none!important}
+.guided-grip #parts,.guided-grip #save-both,.guided-grip #copy,.guided-grip #reset,.guided-grip .file-actions,.guided-grip #edit-reload,.guided-grip #edit-peek{display:none!important}
+.guide-heading{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:10px;letter-spacing:1px;color:var(--accent)}
+.guide-heading button{font-size:11px;padding:7px;letter-spacing:0}
+.guide-tabs,.guide-steps,.guide-actions,.guide-nav{display:flex;gap:6px;margin-top:14px;flex-wrap:wrap}
+.guide-tabs button{flex:1}.guide-steps button{flex:1;padding:9px 4px}.guide-note{font-size:12px;line-height:1.65;color:#afbecb;margin:14px 0}
+.guide-actions button{flex:1;font-size:11px;padding:8px 5px;white-space:normal}
+.guide-pad{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:12px 0}.guide-pad button{font-size:11px;padding:11px 5px;white-space:normal}
+.guide-slider{display:grid;grid-template-columns:1fr auto;gap:10px;margin:18px 0;font-size:12px}.guide-slider input{grid-column:1/-1;width:100%;accent-color:var(--accent)}.guide-slider output{color:var(--accent)}
+.guide-fine{margin:15px 0 0;font-size:12px}.guide-nav{justify-content:space-between;border-top:1px solid var(--line);padding-top:15px}
+#guide-copy-fit,#guide-reset,#guide-drag,#guide-save,#guide-align{width:100%;margin-top:10px;white-space:normal;font-size:12px}
+#guide-save,#guide-align{background:var(--accent);color:#182129;font-weight:700}
+#guide-status{font-size:12px;line-height:1.6;border-radius:5px;padding:10px;margin-top:15px}.guide-warning{color:#ffcf9e;background:#4d3223}.guide-ok{color:#a9d5c5;background:#1d332e}
+.guided-grip .right-panel{padding-top:18px}
+.guide-nav{position:sticky;top:-18px;background:#161d24;padding:12px 0;z-index:3}
+#grip-guide details{margin-top:14px;border:1px solid var(--line);padding:12px;border-radius:5px}
+#grip-guide summary{cursor:pointer;font-size:12px;color:var(--accent)}
+#guide-snap{width:100%;margin-top:6px;background:#2b4944;border-color:#538c7b;white-space:normal}
+.guide-arm-section{border-top:1px solid var(--line);margin-top:16px;padding-top:10px}
+.guide-arm-section h3{font-size:12px;color:#dce3e8}
+.guide-contact{border:1px solid #5f735f;border-radius:5px;padding:12px;margin:14px 0;background:#1d292b}.guide-contact h3{font-size:14px;margin:0 0 10px}.guide-contact .active{outline:2px solid var(--accent)}
 .field input[type=number]{background:#10171e;border:1px solid #38434e;border-radius:4px;padding:8px}
+
+/* Keep the selection visible while the author scrolls through detailed controls. */
+.studio-selection{position:sticky;top:-24px;z-index:5;background:#161d24;padding:1px 0 14px;border-bottom:1px solid var(--line)}
+.studio-selection .field{margin-top:12px}
+#animation-authoring button{white-space:normal;width:100%;margin-top:8px;line-height:1.5}
+#animation-authoring .check{display:flex;align-items:flex-start;gap:8px;margin-top:14px;line-height:1.5}
+.animation-details{border-top:1px solid var(--line);margin-top:18px;padding-top:14px}
+.animation-details summary{cursor:pointer;color:var(--accent);line-height:1.5}
+#animation-selection{overflow-wrap:anywhere}
+@media(min-width:1250px){main{grid-template-columns:280px minmax(350px,1fr) 330px}}
+
+#studio-play{background:#e9b85a;color:#182028;font-weight:700;white-space:normal}
+#studio-live-toolbar{position:absolute;top:64px;left:0;right:0;padding:10px 14px;background:#121a21;z-index:12;border-bottom:1px solid #56616a}
+#studio-live-status{color:#e9b85a;font-size:12px;line-height:1.5;margin-bottom:8px}
+.live-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.live-actions button,.live-actions select{font-size:11px;padding:7px}.live-actions label{font-size:10px}.live-actions small{color:#aebbc6}
+#studio-live-toolbar small{display:block;line-height:1.7;color:#aebbc6;margin-top:6px}
+#studio-live-game{position:absolute;top:196px;left:0;width:100%;height:calc(100% - 196px);border:0;background:#10151a;z-index:10}
+.studio-live #preview,.studio-live #reticle,.studio-live .viewport-bottom{visibility:hidden}
+.studio-live .viewport-top{z-index:13;pointer-events:auto}
+.studio-live .viewport-top .segmented,.studio-live .viewport-top #frame,.studio-live .viewport-top .check{display:none}
+@media(max-width:1100px){#studio-live-game{top:244px;height:calc(100% - 244px)}}

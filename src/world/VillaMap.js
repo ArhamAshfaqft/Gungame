@@ -1,10 +1,11 @@
 import * as THREE from 'three';
+import {alignedOpenings,partitionJunctions} from './WallLayout.js';
 import {RoundedBoxGeometry} from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import {Sky} from 'three/examples/jsm/objects/Sky.js';
 import {mergeGeometries} from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {batchVillaPanels,batchVillaProps} from './VillaPanelBatch.js';
 import {upgradeVillaMaterials} from './VillaMaterials.js';
-import {buildVillaInteriors,buildGalleryWing,SOLSTICE_ROOMS} from './VillaInteriors.js';
+import {buildVillaInteriors,buildGalleryWing,buildWindowDressings,SOLSTICE_ROOMS} from './VillaInteriors.js';
 import {projectFloorMark,surfaceRevision,removeSurfaceMark} from './SurfaceDecal.js';
 import {VillaPanel} from './VillaPanel.js';
 import {DebrisPool} from './DebrisPool.js';
@@ -49,7 +50,7 @@ export class VillaMap{
   this.blastScars=new BlastScars();
   this.environment=new EnvironmentSystem(this);
   this.liquids=new LiquidSystem(this);
-  this.seatingSpecs=[];this.decor=[];this.wallSpecs=[];this.artRequests=[];this.artMounts=[];this.floorSurfaces=[];this.floorOverlays=[];this.rugSpecs=[];this.roomLights=[];this.lighting();this.site();this.shell();buildVillaInteriors(this);buildGalleryWing(this);buildWellnessWing(this);this.garden();this.finishArchitecture();this.roomFinishes();this.mountArtwork();this.projectRugs();bindFixtureDecor(this);this.environment.observeScene();this.contactShadows();this.batchDecor();batchVillaPanels(this);batchVillaProps(this);accelerateSceneRaycasts(this.scene);
+  this.collectWalls=true;this.seatingSpecs=[];this.decor=[];this.wallSpecs=[];this.artRequests=[];this.artMounts=[];this.floorSurfaces=[];this.floorOverlays=[];this.rugSpecs=[];this.roomLights=[];this.lighting();this.site();this.shell();buildVillaInteriors(this);buildGalleryWing(this);buildWellnessWing(this);this.buildWalls();buildWindowDressings(this);this.garden();this.finishArchitecture();this.roomFinishes();this.mountArtwork();this.projectRugs();bindFixtureDecor(this);this.environment.observeScene();this.contactShadows();this.batchDecor();batchVillaPanels(this);batchVillaProps(this);accelerateSceneRaycasts(this.scene);
  }
  box(x,y,z,w,h,d,material='plaster',solid=true,decor=false,options={}){
   if(material==='marble'&&h<.2&&!options.unlayered)return countertop(this,{x,y,z,width:w,height:h,depth:d,material});
@@ -66,10 +67,19 @@ export class VillaMap{
  panel(x,y,z,width,height,rotation=0,kind='wood',door=false,name='Panel'){
   const p=new VillaPanel(this,{x,y,z,width,height,rotation,kind,door,name});p.baseRotation=rotation;return p;
  }
+ buildWalls(){
+  this.collectWalls=false;this.renderingWalls=true;
+  for(const wall of this.wallSpecs)wall.openings=alignedOpenings(wall,this.wallSpecs);
+  for(const wall of this.wallSpecs)this.wall(wall.axis,wall.coord,wall.from,wall.to,wall.base,wall.openings,wall.material,wall.soft);
+  this.renderingWalls=false;
+ }
  // Walls are built around openings, never concealed solid boxes behind doors/windows.
  wall(axis,coord,from,to,base,openings=[],material='plaster',soft=false){
   openings=openings.map(o=>o.kind==='door'?{...o,width:o.width<2?Math.max(1.35,o.width>1.6?1.45:1.35):o.width,height:Math.min(o.height||2.3,2.3)}:{...o});
-  this.wallSpecs.push({axis,coord,from,to,base,openings:openings.map(o=>({...o}))});
+  if(!this.renderingWalls){
+   this.wallSpecs.push({axis,coord,from,to,base,material,soft,openings:openings.map(o=>({...o}))});
+   if(this.collectWalls)return;
+  }
   const height=3.17,rotation=axis==='x'?Math.PI/2:0;
   const solid=(a,b,low,high)=>{if(b-a<.01||high-low<.01)return;const center=(a+b)/2;
    if(soft&&high-low>.3){
@@ -90,7 +100,7 @@ export class VillaMap{
     const trim=this.box(axis==='x'?coord:center+offset,base+low+h/2,axis==='x'?center+offset:coord,axis==='x'?.28:.07,h+.12,axis==='x'?.07:.28,'metal',false,true);trim.name='Door frame';
     trim.userData.wallAttachment=[.3,h/2,h-.3].map(yy=>V(axis==='x'?coord:center+offset+Math.sign(offset)*.12,base+low+yy,axis==='x'?center+offset+Math.sign(offset)*.12:coord));
    }
-   const lintel=this.box(axis==='x'?coord:center,base+low+h+.04,axis==='x'?center:coord,axis==='x'?.28:w+.14,.08,axis==='x'?w+.14:.28,'metal',false,true);lintel.name='Door frame';lintel.userData.wallAttachment=[V(axis==='x'?coord:center,base+low+h+.17,axis==='x'?center:coord)];
+   const lintel=this.box(axis==='x'?coord:center,base+low+h+.044,axis==='x'?center:coord,axis==='x'?.28:w+.14,.08,axis==='x'?w+.14:.28,'metal',false,true);lintel.name='Door frame';lintel.userData.wallAttachment=[V(axis==='x'?coord:center,base+low+h+.17,axis==='x'?center:coord)];
   };
   let cursor=from;for(const o of [...openings].sort((a,b)=>a.at-b.at)){const a=o.at-o.width/2,b=o.at+o.width/2;solid(cursor,a,0,height);solid(a,b,0,o.sill||0);solid(a,b,(o.sill||0)+(o.height||2.3),height);panelAt(o);cursor=b;}solid(cursor,to,0,height);
  }
@@ -137,7 +147,7 @@ export class VillaMap{
   cutSlab(this,[-22,22,-33,-11],1.58,3.16,'earth');cutSlab(this,[-17,17,-29,-11],3.32,.16,'stone');
   this.box(-21,1.58,-1,6,3.16,20,'earth');this.box(27,1.58,-1,6,3.16,20,'earth');
   this.stairs(0,0,16.5,7,4.8,3.4,'Front approach');this.box(0,3.28,12,5,.24,2.3,'stone');
-  this.stairs(-16.5,0,10.1,7,2.5,3.4,'Garden stair');this.box(-16.5,3.28,-1.675,2.5,.24,16.65,'stone');
+  this.stairs(-16.5,0,10.1,7,2.5,3.4,'Garden stair');this.box(-16.5,3.28,4.325,2.5,.24,4.65,'stone');
   this.stairs(16.5,0,10.1,7,2.5,3.4,'Service approach');this.box(16.5,3.28,4.325,2.5,.24,4.65,'stone');
   // Side entries meet a landing instead of opening onto the gap beside a flight.
   for(const side of [-1,1]){
@@ -166,10 +176,10 @@ export class VillaMap{
   // Roof above stair openings closes the structure and creates deep eaves.
   this.box(0,10.1,0,29,.24,23,'plaster');
   for(const y of [0,3.4,6.8]){
-   const front=y===0?[{at:-8,width:5.6,height:2.7,kind:'open'},{at:0,width:1.6,kind:'door',name:'Basement entry'},{at:8,width:3.8,height:1.1,sill:1,kind:'glass'}]:[{at:-8,width:7,height:2.2,sill:.65,kind:'glass'},{at:0,width:1.7,height:2.5,kind:'door',name:y===3.4?'Main entrance':'Balcony door'},{at:8,width:7,height:2.2,sill:.65,kind:'glass'}];
+   const front=y===0?[{at:-8,width:5.6,height:2.7,kind:'open'},{at:0,width:1.6,kind:'door',name:'Basement entry'},{at:8,width:3.8,height:1.1,sill:1,kind:'glass'}]:[{at:-8,width:7,height:2.2,sill:.65,kind:'glass'},{at:0,width:1.7,height:2.5,kind:'door',name:y===3.4?'Main entrance':'Balcony door'},{at:y===6.8?7.4:8,width:y===6.8?5.7:7,height:2.2,sill:.65,kind:'glass'}];
    this.wall('z',11,-14,14,y,front,y===0?'darkStone':'plaster',y>0);
-   this.wall('z',-11,-14,14,y,y===0?[]:[{at:-8,width:5,height:2.5,sill:y===0?.5:.1,kind:'glass'},{at:0,width:1.8,height:2.5,kind:'door',name:'Terrace access'},{at:7,width:4,height:2.1,sill:.7,kind:'glass'}],y===0?'concrete':'stone');
-   for(const x of [-14,14])this.wall('x',x,-11,11,y,[{at:x===14?-9.3:-5,width:x===14?2.4:y===3.4?2.2:3,height:x===14||y===3.4?2.5:1.9,sill:x===14||y===3.4?0:.8,kind:x===14?(y===3.4?'open':'door'):y===3.4?'open':'glass',name:'Gallery connection'},{at:5,width:2.4,height:2.4,kind:y===3.4?'door':'glass',sill:y===3.4?0:.4,name:'Side entry'}],x<0?'stone':'plaster',y>0);
+   this.wall('z',-11,-14,14,y,y===0?[]:[{at:-8,width:5,height:2.5,sill:y===0?.5:.1,kind:'glass'},{at:0,width:1.8,height:2.5,kind:'door',name:'Terrace access'},...(y===3.4?[{at:5.75,width:3.8,height:1.72,sill:1.08,kind:'glass'},{at:9.1,width:1.4,height:1.6,sill:.9,kind:'glass'}]:[{at:7,width:4,height:2.1,sill:.7,kind:'glass'}])],y===0?'concrete':'stone');
+   for(const x of [-14,14])this.wall('x',x,-11,11,y,[{at:x===14?-8.6:-5,width:x===14?2.4:y===3.4?2.2:3,height:x===14||y===3.4?2.5:1.9,sill:x===14||y===3.4?0:.8,kind:x===14?(y===3.4?'open':'door'):y===3.4?'open':'glass',name:'Gallery connection'},{at:5,width:2.4,height:2.4,kind:y===3.4?'door':'glass',sill:y===3.4?0:.4,name:'Side entry'}],x<0?'stone':'plaster',y>0);
    if(y<6.8){this.stairs(0,y,-4.5,7,2.4,3.4,'Main staircase');this.stairs(11.5,y,-4.5,7,2.0,3.4,'Service staircase');}
    // Structural piers read as the permanent skeleton, soft infill stays separately destructible.
    for(const x of [-14,-2.7,2.7,14])for(const z of [-11,11])this.box(x,y+1.56,z,.32,3.12,.32,'stone');
@@ -256,6 +266,10 @@ export class VillaMap{
      const a=o.at-o.width/2-.22,b=o.at+o.width/2+.22;
      spans=spans.flatMap(([l,r])=>b<=l||a>=r?[[l,r]]:[[l,Math.max(l,a)],[Math.min(r,b),r]].filter(([l,r])=>r>l));
     }
+    for(const at of partitionJunctions(wall,this.wallSpecs)){
+     const a=at-.3,b=at+.3;
+     spans=spans.flatMap(([l,r])=>b<=l||a>=r?[[l,r]]:[[l,Math.max(l,a)],[Math.min(r,b),r]].filter(([l,r])=>r>l));
+    }
     for(const [l,r] of spans){if(r-l<w+.3)continue;const xx=THREE.MathUtils.clamp(x,l+w/2+.15,r-w/2-.15);
      if(this.artMounts.some(p=>p.wall===wall&&Math.abs(p.x-xx)<(p.w+w)/2+.2&&Math.abs(p.y-y)<(p.h+h)/2+.15))continue;
      candidates.push({wall,x:xx,score:Math.abs(xx-x)});
@@ -286,12 +300,16 @@ export class VillaMap{
  }
  finishArchitecture(){
   // Deep window reveals, stone piers and brise-soleil break up the facade.
-  for(const y of [3.4,6.8])for(const x of [-8,8]){
-   this.box(x,y+.58,11.3,7.3,.14,.75,'stone',false,true);
-   this.box(x,y+2.95,11.45,7.6,.2,1.2,'plaster',false,true);
-   for(const side of [-1,1])this.box(x+side*3.65,y+1.72,11.28,.2,2.65,.65,'darkStone',false,true);
-   for(const dz of [-11.3])this.box(x,y+2.95,dz,5.6,.16,.7,'darkStone',false,true);
+  // Follow the resolved glazing spans, including piers at room boundaries.
+  // Fixed seven-metre surrounds previously continued across the service bay.
+  for(const wall of this.wallSpecs.filter(w=>w.axis==='z'&&w.coord===11&&w.base>0))for(const opening of wall.openings.filter(o=>o.kind==='glass')){
+   const {at:x,width:w}=opening,y=wall.base,bottom=y+(opening.sill||0),top=bottom+opening.height;
+   const detail=(...args)=>{const mesh=this.box(...args);mesh.name='Front window surround';mesh.userData.windowSpan={from:x-w/2,to:x+w/2,base:y};return mesh;};
+   detail(x,bottom-.076,11.3,w+.14,.14,.75,'stone',false,true);
+   detail(x,top+.19,11.65,w+.2,.2,1.2,'plaster',false,true);
+   for(const side of [-1,1])detail(x+side*(w/2+.05),(bottom+top)/2,11.28,.1,opening.height+.14,.65,'darkStone',false,true);
   }
+  for(const y of [3.4,6.8])for(const x of [-8,8])this.box(x,y+2.95,-11.3,5.6,.16,.7,'darkStone',false,true);
   this.box(2.02,5.0,11.32,.45,3.2,.65,'stone',false,true);
   this.box(-2.02,5.0,11.32,.45,3.2,.65,'stone',false,true);
   // A timber screen wing and roof pavilion give the residence an asymmetric silhouette.
@@ -315,7 +333,15 @@ export class VillaMap{
   for(const x of [-12,12]){this.box(x,.25,20,2.5,.5,3.8,'stone');for(const z of [19,20.5])this.plant(x,.5,z,.4);}
   for(const x of [-5,5])for(const z of [21,27]){this.box(x,.35,z,.12,.7,.12,'metal',false,true);this.box(x,.7,z,.2,.05,.2,'white',false,true);}
   // Interior wall skirting and vertical panel joints add human-scale detail.
-  for(const y of VILLA_LEVELS)for(const x of [-13.82,13.82])this.box(x,y+.055,0,.04,.11,21.4,'wood',false,true);
+  for(const y of VILLA_LEVELS)for(const x of [-13.82,13.82]){
+   const wall=this.wallSpecs.find(w=>w.axis==='x'&&Math.abs(w.coord-Math.sign(x)*14)<.01&&w.base===y);
+   let spans=[[-10.7,10.7]];
+   for(const o of wall?.openings||[])if((o.sill||0)<.12){
+    const a=o.at-o.width/2-.1,b=o.at+o.width/2+.1;
+    spans=spans.flatMap(([l,r])=>a>=r||b<=l?[[l,r]]:[[l,Math.max(l,a)],[Math.min(r,b),r]].filter(([l,r])=>r-l>.02));
+   }
+   for(const [a,b] of spans)this.box(x,y+.055,(a+b)/2,.04,.11,b-a,'wood',false,true);
+  }
  }
  roomFinishes(){
   for(const p of this.panels){if(p.kind!=='plaster')continue;const c=p.mesh.localToWorld(V(p.width/2,p.height/2,0)),floor=c.y<3.3?0:c.y<6.7?3.4:6.8;
@@ -370,11 +396,16 @@ export class VillaMap{
   const lights=[...this.roomLights].sort((a,b)=>a.position.distanceToSquared(position)-b.position.distanceToSquared(position));
   const visible=new Set(lights.slice(0,9));for(const light of this.roomLights)light.visible=visible.has(light);
  }
+ smokeBounds(position){
+  if(position.x>=-23&&position.x<=-14&&position.z>=-10&&position.z<=2&&position.y>=3.4&&position.y<6.6)return new THREE.Box3(V(-22.9,3.42,-9.9),V(-14.1,6.55,1.9));
+  const room=VILLA_ROOMS.find(([floor,x0,x1,z0,z1])=>position.y>=floor&&position.y<floor+3.2&&position.x>=x0&&position.x<=x1&&position.z>=z0&&position.z<=z1);
+  return room?new THREE.Box3(V(room[1]+.06,room[0]+.02,room[3]+.06),V(room[2]-.06,room[0]+3.15,room[4]-.06)):null;
+ }
  get door(){return this.activeDoor||{destroyed:true,open:false};}
  update(dt,position,state={}){
   this.waterTime=(this.waterTime||0)+dt;if(this.waterNormal)this.waterNormal.offset.set(this.waterTime*.025,this.waterTime*.017);
   this.floorOverlays=this.floorOverlays.filter(e=>{if(e.removed||!e.mesh.visible){removeSurfaceMark(e);e.decal.material.dispose();return false;}if(!e.pending&&e.revision!==surfaceRevision(e.mesh)){if(this.destruction)this.destruction.refreshMark(e,()=>removeSurfaceMark(e));else if(!this.projectFloorOverlay(e)){removeSurfaceMark(e);e.decal.material.dispose();return false;}}return true;});
-  for(const p of this.panels)p.update(dt);for(const floor of this.timberFloors||[])floor.update(dt,position,state);settleFloorFixtures(this,dt);this.liquids.update(dt);this.debris.update(dt);this.blastDust.update(dt);this.blastScars.update();this.activeDoor=null;let distance=2.3;for(const p of this.panels){if(!p.isDoor||p.destroyed||p.detachedEnvironment)continue;const center=p.group.localToWorld(V(p.width/2,1,0)),d=center.distanceTo(position);if(d<distance){distance=d;this.activeDoor=p;}}this.canInteract=!!this.activeDoor;}
+  for(const p of this.panels)p.update(dt);for(const floor of this.timberFloors||[])floor.update(dt,position,state);settleFloorFixtures(this,dt);this.liquids.playerContact(position,state.height||1.65,state.speed||0,dt);this.liquids.update(dt);this.debris.update(dt);this.blastDust.update(dt);this.blastScars.update();this.activeDoor=null;let distance=2.3;for(const p of this.panels){if(!p.isDoor||p.destroyed||p.detachedEnvironment)continue;const center=p.group.localToWorld(V(p.width/2,1,0)),d=center.distanceTo(position);if(d<distance){distance=d;this.activeDoor=p;}}this.canInteract=!!this.activeDoor;}
  interact(position){this.update(0,position);if(!this.activeDoor)return false;this.activeDoor.toggle(position);return true;}
  damageExplosion(position,radius){
   if(!this.destruction)return VillaMap.prototype.damageExplosionSync.call(this,position,radius);

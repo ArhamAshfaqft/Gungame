@@ -14,7 +14,7 @@ export function surfaceThickness(mesh,localNormal){
  const axis=['x','y','z'].sort((a,b)=>Math.abs(localNormal[b])-Math.abs(localNormal[a]))[0];
  return Math.max(.003,size[axis]*Math.abs(scale[axis]));
 }
-const PROJECTILES=Object.freeze({primary:{energy:4500,decay:350},shotgun:{energy:160,decay:18},pistol:{energy:500,decay:90}});
+const PROJECTILES=Object.freeze({primary:{energy:4500,decay:350},assault:{energy:1700,decay:220},shotgun:{energy:160,decay:18},pistol:{energy:500,decay:90}});
 export function transportEnergy(slot,energy,distance){return energy*Math.exp(-Math.max(0,distance)/(PROJECTILES[slot]||PROJECTILES.pistol).decay);}
 export function projectileEnergy(slot,distance=0,multiplier=1){return transportEnergy(slot,(PROJECTILES[slot]||PROJECTILES.pistol).energy,distance)*Math.max(0,multiplier);}
 export function penetrationResponse(material,thickness,energy,incidence=1){

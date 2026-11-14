@@ -27,6 +27,40 @@ function room(){
 function step(m,count=240){for(let i=0;i<count;i++)m.environment.update(1/60);}
 function hit(fx,mesh,point,normal=V(0,0,1),slot='primary'){return fx.hit({object:mesh,point,face:{normal},distance:2},slot,normal.clone().negate());}
 
+test('a bookshelf resists light bullets but moves from a strong directional blast and settles',()=>{
+ const m=room(),g=bookshelf(m,{x:0,y:0,z:0,width:2}),r=m.environment.byObject.get(g),part=r.parts[0];m.environment.observeScene();
+ for(let i=0;i<12;i++)m.environment.hit(part,V(0,1,0),V(0,0,1),34);
+ assert.equal(r.body,null);
+ m.environment.hit(part,V(0,1.8,0),V(0,0,1),250,{blast:true});assert.ok(r.body);let travel=0;
+ for(let i=0;i<3600;i++){step(m,1);travel=Math.max(travel,g.position.length(),2*Math.acos(Math.min(1,Math.abs(g.quaternion.w))));}
+ assert.ok(travel>.1,'a blast transfers visible movement to the rack');assert.equal(r.body.sleepState,2);
+});
+
+test('water distinguishes impacts and clips fading ripples to the source body',()=>{
+ const m=room(),liquids=new LiquidSystem(m),mesh=new T.Mesh(new T.PlaneGeometry(1,1,8,8),new T.MeshPhysicalMaterial());mesh.rotation.x=-Math.PI/2;mesh.position.y=.6;m.scene.add(mesh);const body=liquids.add(mesh,{bottom:.2});
+ body.impact(V(.4,.6,0),34);assert.equal(liquids.drops.pieces.length,20);
+ liquids.crossing(V(0,1,0),V(0,.5,0),'grenade',4);assert.equal(liquids.ripples.at(-1).kind,'grenade');
+ liquids.playerContact(V(0,2.5,0),1.65,0,.1);liquids.playerContact(V(0,2,0),1.65,0,.1);assert.ok(liquids.ripples.some(r=>r.kind==='player'));
+ liquids.explosion(V(0,.4,0),2);assert.equal(liquids.ripples.at(-1).kind,'blast');liquids.update(.1);
+ assert.deepEqual(Array.from(liquids.rippleBounds.array.slice(0,4)),[-.5,.5,-.5,.5]);assert.ok(liquids.rippleAlpha.getX(0)<1);
+ body.volume=0;body.level=body.bottom;liquids.update(.1);assert.equal(liquids.rings.count,0);assert.equal(liquids.drops.capacity,160);
+});
+
+test('water walking ripples require feet inside the actual water depth',()=>{
+ const m=room(),liquids=new LiquidSystem(m),mesh=new T.Mesh(new T.PlaneGeometry(2,2),new T.MeshPhysicalMaterial());mesh.rotation.x=-Math.PI/2;mesh.position.y=3.9;m.scene.add(mesh);liquids.add(mesh,{bottom:3.4});
+ liquids.playerContact(V(0,4.7,0),1.65,2,.1);liquids.playerContact(V(.01,4.7,0),1.65,2,.1);
+ assert.equal(liquids.ripples.length,0,'feet below the container do not disturb upstairs water, even if the head overlaps its depth');
+ liquids.playerFoot=null;liquids.playerContact(V(0,5.1,0),1.65,2,.1);liquids.playerContact(V(.01,5.1,0),1.65,2,.1);assert.ok(liquids.ripples.some(r=>r.kind==='wade'));
+});
+
+test('upstairs water applies buoyancy only to rigid bodies overlapping its real vertical volume',()=>{
+ const m=room(),mesh=m.box(0,1,0,.2,.2,.2,'wood'),r=m.environment.register(mesh,{loose:true});m.environment.activate(r);
+ m.colliders.waterAreas=[{minX:-2,maxX:2,minZ:-2,maxZ:2,bottom:3.4,surface:3.9}];
+ m.environment.update(1/60);assert.equal(r.buoyancy,0);
+ r.body.position.y=3.65;r.body.velocity.set(0,0,0);m.environment.update(1/60);assert.ok(r.buoyancy>0);
+ r.body.position.y=4.5;r.body.velocity.set(0,0,0);m.environment.update(1/60);assert.equal(r.buoyancy,0);
+});
+
 test('a real falling loose object wakes a settled object through physical contact',()=>{
  const m=room(),e=m.environment,target=m.box(0,.05,0,.3,.1,.2),r=e.register(target,{loose:true,parts:[target]});e.activate(r);step(m,180);assert.equal(r.body.sleepState,2);
  const falling=m.box(0,.9,0,.25,.12,.18),incoming=e.register(falling,{loose:true,parts:[falling]});e.activate(incoming);let woke=false;
@@ -92,6 +126,22 @@ test('a frame reads real panel holes and an attached door becomes hinged physics
  const at=door.mesh.localToWorld(V(hole.center.x,hole.center.y,0));assert.ok(!door.mesh.userData.damageColliders.some(b=>b.containsPoint(at)),'detached doors must not refill their old holes with solid collision');
 });
 
+test('hinge-side wood loss releases the surviving door, while latch damage does not',()=>{
+ const m=room();m.materials.woodPanel=new T.MeshStandardMaterial();m.emitPanelDebris=()=>{};
+ const frame=m.box(0,1.2,0,.07,2.4,.28,'metal',false);frame.name='Door frame';
+ const door=new VillaPanel(m,{x:0,y:0,z:0,width:1.2,height:2.3,door:true});m.environment.observeScene();
+ const record=m.environment.byObject.get(door.group);assert.ok(record);
+ for(const piece of door.pieces.filter(p=>p.bounds.min.x>.7))door.removePiece(piece,V(0,0,1));
+ door.refreshCollision();assert.equal(door.hingeSupported(),true);assert.equal(record.body,null);
+ for(const piece of door.pieces.filter(p=>p.bounds.min.x<.03))door.removePiece(piece,V(0,0,1));
+ door.refreshCollision();assert.equal(door.hingeSupported(),false);assert.ok(record.body);assert.ok(!record.joint);
+ assert.equal(door.detachedEnvironment,true);assert.ok(door.mesh.visible);assert.ok(door.broken.size<door.pieces.length);
+ assert.ok(!m.colliders.some(b=>b.doorGroup===door.group),'falling leaf no longer has kinematic door collision');
+ const initial=record.body.quaternion.clone();step(m,360);
+ const q=record.body.quaternion;assert.ok(Math.abs(q.x*initial.x+q.y*initial.y+q.z*initial.z+q.w*initial.w)<.95,'gravity/contact tip the released leaf '+JSON.stringify({q,position:record.body.position,angular:record.body.angularVelocity}));
+ const before=door.open;door.toggle(V(0,1,1));assert.equal(door.open,before,'fallen doors cannot be toggled');
+});
+
 test('retained debris tracks its actual owner rather than every unrelated collider update',()=>{
  const m=room(),upper=m.box(0,1.95,0,2,.1,2),pool=new DebrisPool(m.scene,new T.BoxGeometry(.1,.02,.1),new T.MeshBasicMaterial(),8,{groundHeight:(p,c)=>m.rubbleFloor(p,c),supportOwner:()=>m.lastSupportMesh,supportInterval:.05,supportRevision:()=>m.colliders.supportRevision||0});
  pool.spawn(V(0,2.3,0),V(),new T.Matrix4(),V(),Infinity);for(let i=0;i<300;i++)pool.update(1/60);assert.ok(pool.pieces[0].settled);
@@ -133,4 +183,16 @@ test('destroyed physics parents release their constraints and invisible loose ob
  const m=room(),base=m.box(0,1,0,.2,2,.2),shelf=m.box(0,1.5,0,1,.05,.4),parent=m.environment.register(base),child=m.environment.support(shelf,[base]);m.environment.activate(parent);m.environment.activate(child);assert.ok(child.joint);
  removeProp(base,m.colliders);step(m,240);assert.equal(parent.body,null);assert.equal(child.joint,null);assert.equal(m.environment.world.constraints.length,0);assert.ok(shelf.position.y<.3);
  const book=materialPart(m.box(2,.2,0,.1,.3,.1,'wood',false),'paper'),r=m.environment.register(book,{loose:true});book.castShadow=true;m.environment.activate(r);assert.ok(book.userData.motionBatch);book.visible=false;step(m,1);assert.equal(r.body,null);assert.equal(book.userData.motionBatch,undefined);assert.ok(m.motionShadowBounds.containsPoint(book.position),'removing the last caster also clears its cached shadow');
+});
+
+
+
+test('static debris neighbours are reused inside a cell and refresh after structural damage',()=>{
+ const m=room(),g=bookshelf(m,{x:0,y:0,z:0,width:2}),r=m.environment.byObject.get(g);
+ m.environment.observeScene();m.environment.hit(r.parts[0],V(0,1.8,0),V(0,0,1),250,{blast:true});
+ const e=m.environment;e.syncStatic();const before=[...e.staticBodies.values()].map(r=>r.body);
+ r.body.position.x+=.02;e.syncStatic();assert.deepEqual([...e.staticBodies.values()].map(r=>r.body),before);
+ const floor=m.colliders.find(c=>c.supportMesh?.position.y===-.1);m.colliders.splice(m.colliders.indexOf(floor),1);invalidateSupport(m.colliders);
+ e.syncStatic();assert.equal(e.staticBodies.has(floor),false,'removed floors cannot remain as invisible support');
+ r.body.position.x+=8;e.syncStatic();assert.ok(e.staticCellKey.includes('4,'),'crossing a cell refreshes the neighbourhood');
 });

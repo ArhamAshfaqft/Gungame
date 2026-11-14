@@ -1,5 +1,44 @@
 # Destruction scheduling
 
+## Automatic fire into timber floors (2026-11-05)
+
+Sustained fire exposed a separate CPU bottleneck: Three.js decal projection
+allocated/clipped vertices for the entire floor layer on every impact and scar
+refresh. Debris support rays also scanned entire fractured layers. This becomes
+particularly costly when a rifle penetrates the boards, subfloor and ceiling.
+
+- Decal projection now rejects triangles outside a conservative projector box
+  before invoking the original clipper. Cached triangle bounds follow geometry,
+  position and index revisions. Both local and worker operations use this path.
+- Fractured-panel rays test cell bounds and scan only overlapping triangle ranges.
+  Global face indices and fracture identifiers remain intact. Bounds include
+  Float32 rounding at board seams; the original draw range is restored afterward.
+- A hit that does not remove a cell no longer rebuilds unchanged collision boxes
+  or sends an unnecessary support-change notification. Punctures still invalidate
+  support queries, and removed cells still open collision holes immediately.
+
+Damage thresholds, fracture shapes, projectile penetration, fragment counts and
+pool capacities are unchanged. `tests/floor-spray.test.js` compares filtered decal
+triangles and cell ray hits against the original Three.js queries, including
+holes, board seams, reverse rays and removed cells.
+
+`node scripts/profile-floor-spray.mjs` runs 90 deterministic, three-layer impact
+queries plus six debris/map simulation steps per shot. `--baseline` loads the
+three pre-change modules from Git HEAD into an isolated browser; `--verify-rays`
+compares every panel ray with an unfiltered query (verification overhead makes
+that mode unsuitable for timing). No saved poses are written.
+
+Local headless Chrome CPU comparison: total shot processing 4747 ms to 1052 ms;
+95th percentile shot processing 167.1 ms to 21.4 ms. Both produced the same layer
+puncture counts and vertex counts. This is CPU work across three floor layers,
+not a rendered FPS measurement or a guarantee of constant 60 FPS.
+
+`node scripts/check-floor-spray.mjs` also exercises actual M4 weapon raycasts in
+the lounge, archive and suite, verifies real board breakage and channels, and
+checks falling through a cleared three-layer breach. It reports browser and
+worker errors. The fall setup explicitly removes nearby joists and board cells;
+it does not claim every burst alone creates a player-sized opening.
+
 The villa keeps its authored objects, visible fracture shapes, materials, debris
 pools, audio and saved weapon poses. Performance work must include rendering,
 physics settling and gameplay reactions, not just the explosion function's return

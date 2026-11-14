@@ -1,0 +1,22 @@
+import {chromium} from 'playwright';import assert from 'node:assert/strict';
+const b=await chromium.launch({channel:'chrome',headless:true}),p=await b.newPage({viewport:{width:1440,height:900}}),errors=[];p.on('pageerror',e=>errors.push(e.message));try{
+await p.goto('http://127.0.0.1:5181/?map=villa');await p.waitForFunction(()=>window.__fastSnipe?.weapon.armsRig&&!document.querySelector('#btn-play').disabled,{timeout:60000});await p.locator('#btn-play').click();await p.keyboard.press('Digit6');await p.waitForTimeout(600);await p.waitForFunction(()=>!document.querySelector('#camera-toggle').disabled);
+assert.equal(await p.locator('#round-timer').textContent(),'00:00');assert.equal(await p.locator('.player-profile').count(),10);assert.equal(await p.locator('#ammo-val').textContent(),'30');
+await p.screenshot({path:'E:/Cache/Temp/tactical-hud-1440.png'});
+await p.mouse.down({button:'right'});await p.waitForTimeout(600);assert.ok(Number(await p.locator('#crosshair').evaluate(e=>e.style.opacity))<.1);await p.mouse.up({button:'right'});await p.waitForTimeout(500);
+await p.mouse.click(700,400);await p.waitForTimeout(120);assert.ok(Number(await p.locator('#ammo-val').textContent())<30);
+await p.keyboard.press('KeyR');await p.waitForTimeout(300);assert.ok(await p.locator('#ammo-panel').evaluate(e=>e.classList.contains('reloading')));assert.ok(await p.locator('#reload-fill').evaluate(e=>e.style.transform!=='scaleX(0)'));
+await p.waitForTimeout(2300);assert.equal(await p.locator('#ammo-val').textContent(),'30');
+await p.keyboard.press('Digit2');await p.waitForTimeout(400);assert.equal(await p.locator('#active-weapon-key').textContent(),'2');assert.ok((await p.locator('#weapon-name').textContent()).includes('M9'));
+await p.keyboard.press('Digit3');await p.waitForTimeout(450);assert.equal(await p.locator('#active-weapon-key').textContent(),'3');assert.ok(await p.locator('#utility-frag').evaluate(e=>e.classList.contains('selected')));assert.equal(await p.locator('#ammo-res').textContent(),'READY');
+await p.evaluate(()=>window.__fastSnipe.equipment.damagePlayer(80));await p.waitForTimeout(100);assert.equal(await p.locator('#health-value').textContent(),'20');assert.ok(await p.locator('#health-panel').evaluate(e=>e.classList.contains('low-health')));
+await p.keyboard.press('Digit6');await p.waitForTimeout(400);await p.keyboard.press('KeyX');await p.waitForTimeout(150);assert.equal(await p.locator('#stance-icon-use').getAttribute('href'),'#hud-crouching');
+await p.evaluate(()=>{window.__fastSnipe.movement.yaw=-Math.PI/2;});await p.waitForTimeout(100);assert.equal(await p.locator('#compass-heading').textContent(),'E 090°');
+await p.evaluate(()=>window.__fastSnipe.hud.setMatchState({defendersScore:2,attackersScore:1,round:4,seconds:81,attackers:[{alive:false}]}));assert.equal(await p.locator('#round-timer').textContent(),'01:21');assert.equal(await p.locator('#defenders-score').textContent(),'2');assert.equal(await p.locator('#round-label').textContent(),'ROUND 4');assert.ok(await p.locator('#attacker-profiles .player-profile').first().evaluate(e=>e.classList.contains('eliminated')));
+await p.evaluate(()=>window.__fastSnipe.equipment.damagePlayer(100));await p.waitForTimeout(120);assert.equal(await p.locator('#health-value').textContent(),'0');assert.ok(await p.locator('#defender-profiles .player-profile').first().evaluate(e=>e.classList.contains('eliminated')));await p.waitForTimeout(2700);assert.equal(await p.locator('#health-value').textContent(),'100');assert.ok(!(await p.locator('#defender-profiles .player-profile').first().evaluate(e=>e.classList.contains('eliminated'))));
+await p.evaluate(()=>{const g=window.__fastSnipe;g.hud.setMatchState({defendersScore:0,attackersScore:0,round:1,seconds:0,attackers:[]});g.equipment.playerHealth=100;g.movement.yaw=g.movement.spawnYaw||0;});await p.keyboard.press('KeyX');await p.waitForTimeout(100);
+await p.setViewportSize({width:1920,height:1080});await p.waitForTimeout(300);await p.screenshot({path:'E:/Cache/Temp/tactical-hud-1920.png'});
+await p.setViewportSize({width:800,height:600});await p.waitForTimeout(250);await p.screenshot({path:'E:/Cache/Temp/tactical-hud-800.png'});
+await p.setViewportSize({width:390,height:844});await p.waitForTimeout(250);await p.screenshot({path:'E:/Cache/Temp/tactical-hud-390.png'});
+assert.deepEqual(errors,[]);console.log(JSON.stringify({healthAmmoReloadGrenadesCompassStanceAndMatchState:true,profiles:10,errors}));
+}finally{await b.close();}

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {editedViewPose} from './ViewPoseEdits.js';
 import { WEAPONS } from '../weapons/WeaponProfiles.js';
 import { sampleReloadSequence, addTimelinePose, applySequenceFraming, applySequenceMechanics, sequenceMotion, wristMatrix } from './ReloadTimeline.js';
 
@@ -122,9 +123,9 @@ export function createReloadEditor({ weapon, getLibrary, transact, renderControl
         weapon.equipment = null; weapon.weaponGroup.visible = true;
         weapon.update(0); weapon.rifleModel.visible = false; weapon.pistolModel.visible = true;
         weapon.weaponGroup.traverse(object => { if (object.name?.startsWith('Grenade')) object.visible = false; });
-        const sample = sampleReloadSequence(sequence(),time), custom = addTimelinePose(getLibrary().poses['pistol:hip'],sample.pose);
+        const sample = sampleReloadSequence(sequence(),time), custom = addTimelinePose(editedViewPose({...weapon,studioPoseAction:'reload',adsProgress:0,overrideFire:false,poseLibrary:getLibrary()})||getLibrary().poses['pistol:hip'],sample.pose);
         applySequenceFraming(weapon.weaponGroup.position,weapon.weaponGroup.rotation,sample);
-        weapon.armsRig.reset(); weapon.armsRig.poseHands(weapon.weaponGroup,{pose:'pistol',reload:time/sequence().duration,custom,motion:sequenceMotion(time/sequence().duration)});
+        weapon.armsRig.reset(); weapon.armsRig.poseHands(weapon.weaponGroup,{pose:'pistol',reload:time/sequence().duration,custom,motion:sequenceMotion(time/sequence().duration),contactModel:weapon.pistolModel});
         applySequenceMechanics(weapon.pistolModel,weapon.armsRig,sample); render(); return true;
     }
     return { get active(){return active;}, render:renderEditor, frame, get time(){return time;} };

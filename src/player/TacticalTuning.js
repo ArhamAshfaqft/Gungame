@@ -12,7 +12,7 @@ export const TACTICAL = Object.freeze({
     slideDecel: 9,
     slideMaxDuration: 0.48,
     slideCooldown: 1.4,
-    jumpForce: 5.2,
+    jumpForce: 6.8,
     gravity: 28,
     sprintReadyTime: 0.22,
     leanMaxOffset: 0.32,

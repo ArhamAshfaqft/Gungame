@@ -63,8 +63,9 @@ export function sampleReloadSequence(sequence,seconds){
 export function addTimelinePose(base,offsets){
     const out=clone(base);
     for(const part of ['weapon','Left','Right'])for(const field of Object.keys(offsets[part])){
+        if(field==='contact')continue;
         if(field==='fingers')for(const finger of Object.keys(offsets[part].fingers))out[part].fingers[finger]=out[part].fingers[finger].map((n,i)=>n+offsets[part].fingers[finger][i]);
-        else out[part][field]=out[part][field].map((n,i)=>n+offsets[part][field][i]);
+        else out[part][field]=(out[part][field]||[0,0,0]).map((n,i)=>n+offsets[part][field][i]);
     }return out;
 }
 export function applySequenceFraming(position,rotation,sample){

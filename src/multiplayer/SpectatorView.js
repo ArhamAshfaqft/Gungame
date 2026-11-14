@@ -1,0 +1,14 @@
+import {PerspectiveCamera,Vector3,Quaternion,Euler} from 'three';
+import {chaseCameraPosition} from '../player/ThirdPersonView.js';
+import {spectatorTargets} from './TeamSelection.js';
+import {soundEngine} from '../audio/SoundEngine.js';
+export class SpectatorView{
+ constructor(game,session){this.game=game;this.session=session;this.camera=new PerspectiveCamera(70,game.camera.aspect,.02,500);this.targetId=null;this.ready=false;this.eye=new Vector3();this.focus=new Vector3();this.banner=document.createElement('div');this.banner.id='spectator-status';this.banner.hidden=true;document.body.append(this.banner);window.addEventListener('keydown',e=>{if(this.active&&game.movement.isLocked&&['ArrowLeft','ArrowRight'].includes(e.code)){e.preventDefault();this.cycle(e.code==='ArrowLeft'?-1:1);}});}
+ get active(){return !!this.session.connected&&!!this.session.own&&(this.session.own.spectator||this.session.own.hp<=0);}
+ targets(){return spectatorTargets(this.session.lastSnapshot?.players||[],this.session.own||{});}
+ cycle(direction){const ids=this.targets();if(!ids.length)return;this.targetId=ids[(ids.indexOf(this.targetId)+direction+ids.length)%ids.length];this.ready=false;}
+ update(dt){const active=this.active;document.body.classList.toggle('is-spectating',active);this.banner.hidden=!active;if(!active){this.ready=false;this.targetId=null;return;}const own=this.session.own,ids=this.targets();if(!ids.includes(this.targetId)){this.targetId=ids[0]||null;this.ready=false;}const remote=this.session.remotes.get(this.targetId),player=this.session.lastSnapshot.players.find(p=>p.id===this.targetId),m=remote?.m;
+ if(m&&remote.samples.length){this.eye.copy(m.position);const q=new Quaternion().setFromEuler(new Euler(m.pitch,m.yaw,0,'YXZ')),desired=chaseCameraPosition(this.eye,q,this.game.arena.colliders,false,m.position.y-m.currentHeight);if(!this.ready)this.camera.position.copy(desired);else this.camera.position.lerp(desired,1-Math.exp(-dt*18));this.focus.set(0,0,-1).applyQuaternion(q).multiplyScalar(30).add(this.eye);this.camera.lookAt(this.focus);this.ready=true;}else{this.camera.position.copy(this.game.camera.position);this.camera.quaternion.copy(this.game.camera.quaternion);}
+ this.camera.aspect=this.game.camera.aspect;this.camera.updateProjectionMatrix();this.camera.updateMatrixWorld(true);const countdown=own.spectator?'':` - Respawn ${Math.ceil(own.respawnRemaining||0)}s`;this.banner.textContent=player?`${own.spectator?'SPECTATING':'YOU DIED - SPECTATING TEAMMATE'}: ${player.name}${countdown} | Left / Right: switch`:`${own.spectator?'SPECTATOR - Waiting for a living player':'YOU DIED - No living teammate'}${countdown}`;soundEngine.combat.listener={position:this.camera.position,yaw:m?.yaw||0};}
+ hide(){document.body.classList.remove('is-spectating');this.banner.hidden=true;}
+}

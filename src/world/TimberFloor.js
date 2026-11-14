@@ -95,12 +95,12 @@ export class TimberFloor {
   if(!this.joists.length)return;
   if(!this.boards.broken.size&&!this.backing.broken.size&&!this.ceiling.broken.size&&this.joists.every(b=>b.mesh.visible))return;
   this.checkClock+=dt;if(this.checkClock<.15)return;const elapsed=this.checkClock;this.checkClock=0;
-  const local=this.boards.mesh.worldToLocal(position.clone()),standing=Math.abs(position.y-this.y-(state.height||1.65))<.35;
+  const contacts=(state.players||[{position,height:state.height||1.65,speed:state.speed||0}]).map(player=>({...player,local:this.boards.mesh.worldToLocal(player.position.clone()),standing:Math.abs(player.position.y-this.y-player.height)<.35}));
   for(const panel of [this.boards,this.backing,this.ceiling]){
    let changed=false;
    for(const p of panel.pieces){if(panel.broken.has(p.id))continue;const supports=this.supported(p);
-    const loaded=panel!==this.ceiling&&standing&&Math.hypot(local.x-p.center.x,local.y-p.center.y)<.3&&(panel.health.get(p.id)||0)>panel.toughness*.35;
-    if(supports===0||supports===1&&loaded){if(loaded&&!p.loadTime&&!this.loadSound){soundEngine.playWoodHit();this.loadSound=.8;}p.loadTime=(p.loadTime||0)+elapsed*((state.speed||0)>3?1.6:1);if(supports===0||p.loadTime>.45){panel.removePiece(p,new THREE.Vector3(0,-1,0));changed=true;}}
+    const loaded=panel!==this.ceiling&&(panel.health.get(p.id)||0)>panel.toughness*.35?contacts.find(c=>c.standing&&Math.hypot(c.local.x-p.center.x,c.local.y-p.center.y)<.3):null;
+    if(supports===0||supports===1&&loaded){if(loaded&&!p.loadTime&&!this.loadSound){soundEngine.playWoodHit();this.loadSound=.8;}p.loadTime=(p.loadTime||0)+elapsed*((loaded?.speed||0)>3?1.6:1);if(supports===0||p.loadTime>.45){panel.removePiece(p,new THREE.Vector3(0,-1,0));changed=true;}}
     else p.loadTime=0;
    }
    if(changed)panel.refreshCollision();

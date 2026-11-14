@@ -12,6 +12,8 @@ downloaded_assets/
 # Large originals are local source art, not needed to run the game.
 # Runtime exports are included under public/assets.
 Ch15_nonPBR.fbx
+animated_pistol.glb
+Running-new.fbx
 Basic Shooter Pack.zip
 Pistol_Handgun Locomotion Pack.zip
 
@@ -24,6 +26,7 @@ public/assets/weapons/*.glb
 !public/assets/weapons/m98b.glb
 !public/assets/weapons/scope.glb
 !public/assets/weapons/m9.glb
+!public/assets/weapons/m4a1.glb
 
 # Editor / OS noise
 .vscode/
@@ -31,3 +34,5 @@ public/assets/weapons/*.glb
 .DS_Store
 Thumbs.db
 *.log
+
+.pose-backups/

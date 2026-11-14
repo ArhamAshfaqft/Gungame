@@ -11,6 +11,7 @@ class SoundEngine {
     }
 
     init() {
+        if (typeof window === 'undefined') return;
         if (this.initialized) return;
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (!AudioContextClass) return;
@@ -25,6 +26,7 @@ class SoundEngine {
         this.initialized = true;
         this.loadFootsteps();
         this.combat.load();
+        this.loadWaterSounds();
 
         if (this.ctx.state === 'suspended') {
             const resumeAudio = () => {
@@ -66,6 +68,14 @@ class SoundEngine {
         source.connect(filter); filter.connect(gain); gain.connect(this.masterGain); source.start(now);
     }
 
+    playRemoteShot(slot, position) {
+        this.ensureContext();if(!this.ctx||this.isMuted)return;
+        if(slot!=='assault'&&this.playSample(slot==='primary'?'sniperShot':'pistolShot',{volume:slot==='primary'?.9:.7,group:'shots',position}))return;
+        const ctx=this.ctx,spatial=this.combat.listener?this.combat.spatial(position):{volume:1,pan:0};
+        if(!this.remoteShotNoise){this.remoteShotNoise=ctx.createBuffer(1,Math.ceil(ctx.sampleRate*.12),ctx.sampleRate);const data=this.remoteShotNoise.getChannelData(0);for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*Math.exp(-i/data.length*5);}
+        const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),pan=ctx.createStereoPanner();source.buffer=this.remoteShotNoise;filter.type='highpass';filter.frequency.value=slot==='assault'?700:450;gain.gain.setValueAtTime(.65*spatial.volume,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.12);pan.pan.value=spatial.pan;source.connect(filter);filter.connect(gain);gain.connect(pan);pan.connect(this.masterGain);source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();pan.disconnect();};source.start();
+    }
+
     playPistolShot() {
         if(this.playSample('pistolShot',{volume:.7,group:'shots'})){this.playSample('casing',{volume:.09,delay:.22,group:'weapon'});return;}
         this.ensureContext();
@@ -80,6 +90,14 @@ class SoundEngine {
     }
 
     // Heavy Sniper Rifle Shot (.338 Lapua / .50 Caliber Crack)
+    playAssaultShot() {
+        this.ensureContext();if(!this.ctx||this.isMuted)return;
+        const now=this.ctx.currentTime;
+        if(!this.assaultNoise){this.assaultNoise=this.ctx.createBuffer(1,Math.ceil(this.ctx.sampleRate*.11),this.ctx.sampleRate);const data=this.assaultNoise.getChannelData(0);for(let i=0;i<data.length;i++)data[i]=(Math.random()*2-1)*Math.exp(-i/data.length*5);}
+        const source=this.ctx.createBufferSource(),filter=this.ctx.createBiquadFilter(),gain=this.ctx.createGain();source.buffer=this.assaultNoise;source.playbackRate.value=.96+Math.random()*.08;filter.type='highpass';filter.frequency.value=700;gain.gain.setValueAtTime(.65,now);gain.gain.exponentialRampToValueAtTime(.001,now+.11);source.connect(filter);filter.connect(gain);gain.connect(this.masterGain);source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};source.start(now);
+        const punch=this.ctx.createOscillator(),low=this.ctx.createGain();punch.frequency.setValueAtTime(160,now);punch.frequency.exponentialRampToValueAtTime(55,now+.08);low.gain.setValueAtTime(.2,now);low.gain.exponentialRampToValueAtTime(.001,now+.09);punch.connect(low);low.connect(this.masterGain);punch.onended=()=>{punch.disconnect();low.disconnect();};punch.start(now);punch.stop(now+.1);
+    }
+
     playSniperShot() {
         if(this.playSample('sniperShot',{volume:.9,group:'shots'}))return;
         this.ensureContext();
@@ -266,9 +284,10 @@ class SoundEngine {
         }).then(samples=>{this.footstepSamples=samples;return samples;}).catch(()=>null);
         return this.footstepLoading;
     }
-    playFootstep(kind = 'run',side='Left') {
+    playFootstep(kind = 'run',side='Left',water=false) {
         this.ensureContext();
         if (!this.ctx || this.isMuted) return;
+        if(water){if(!this.playWaterFootstep(kind,side))this.playWaterImpact(18,'wade');return;}
         if(this.footstepSamples?.length){
             const count=this.footstepSamples.length;
             const index=((this.lastFootstepSample??-1)+1+Math.floor(Math.random()*(count-1)))%count;
@@ -322,12 +341,40 @@ class SoundEngine {
         thump.stop(now + 0.12);
     }
 
-    playWaterImpact(strength=34) {
+    loadWaterSounds() {
+        if(this.waterAudioLoading)return this.waterAudioLoading;
+        this.waterAudioLoading=fetch('/assets/audio/water/samples.json').then(response=>{
+            if(!response.ok)throw Error('Water audio unavailable');return response.json();
+        }).then(async pack=>{
+            await Promise.all(Object.entries(pack.samples).map(async([key,encoded])=>{
+                try{const data=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));this.combat.buffers.set(key,await this.ctx.decodeAudioData(data.buffer));}catch{/* retain the procedural fallback */}
+            }));
+            this.waterStepKeys=Object.keys(pack.samples).filter(key=>key.startsWith('waterStep')&&this.combat.buffers.has(key));
+        }).catch(()=>null);
+        return this.waterAudioLoading;
+    }
+
+    playWaterFootstep(kind='run',side='Left') {
+        const keys=this.waterStepKeys;if(!keys?.length)return false;
+        // The entry transient already contains a foot/body splash.
+        if(this.lastWaterEntry!==undefined&&this.ctx.currentTime-this.lastWaterEntry<.18)return true;
+        const index=((this.lastWaterStep??-1)+1+Math.floor(Math.random()*Math.max(1,keys.length-1)))%keys.length;
+        this.lastWaterStep=index;
+        return this.playSample(keys[index],{volume:{sprint:.55,run:.4,walk:.22,crouch:.1,crouchRun:.23}[kind]??.4,rate:.97+Math.random()*.06,stereo:side==='Left'?-.08:.08,group:'waterSteps'});
+    }
+
+    playWaterImpact(strength=34,kind='bullet',position=null) {
         if(typeof window==='undefined')return;
         this.ensureContext();if(!this.ctx||this.isMuted)return;
-        const now=this.ctx.currentTime,duration=.24;
+        if(kind==='player'){
+            if(this.lastWaterEntry!==undefined&&this.ctx.currentTime-this.lastWaterEntry<.25)return;
+            if(this.playSample('waterEntry',{volume:Math.min(.85,.4+Math.sqrt(Math.max(0,strength))*.025),position,group:'waterEntry'})){this.lastWaterEntry=this.ctx.currentTime;return;}
+        }
+        if(this.lastWaterSound!==undefined&&this.ctx.currentTime-this.lastWaterSound<.055)return;this.lastWaterSound=this.ctx.currentTime;
+        const now=this.ctx.currentTime,duration=kind==='blast'?.85:kind==='player'?.6:kind==='grenade'?.4:kind==='wade'?.18:.24;
         if(!this.waterNoise){this.waterNoise=this.ctx.createBuffer(1,Math.floor(this.ctx.sampleRate*duration),this.ctx.sampleRate);const samples=this.waterNoise.getChannelData(0);for(let i=0;i<samples.length;i++)samples[i]=(Math.random()*2-1)*(.55+.45*Math.sin(i*.07));}
-        const source=this.ctx.createBufferSource(),filter=this.ctx.createBiquadFilter(),gain=this.ctx.createGain();source.buffer=this.waterNoise;filter.type='lowpass';filter.frequency.setValueAtTime(1800,now);filter.frequency.exponentialRampToValueAtTime(240,now+duration);gain.gain.setValueAtTime(Math.min(.3,.05+Math.sqrt(strength)*.015),now);gain.gain.exponentialRampToValueAtTime(.001,now+duration);source.connect(filter);filter.connect(gain);gain.connect(this.masterGain);source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};source.start(now);
+        const source=this.ctx.createBufferSource(),filter=this.ctx.createBiquadFilter(),gain=this.ctx.createGain();source.buffer=this.waterNoise;source.loop=true;source.playbackRate.value=kind==='blast'?.55:kind==='player'?.75:kind==='grenade'?.9:1.2;filter.type='lowpass';filter.frequency.setValueAtTime(1800,now);filter.frequency.exponentialRampToValueAtTime(240,now+duration);gain.gain.setValueAtTime(Math.min(.3,.05+Math.sqrt(strength)*.015),now);gain.gain.exponentialRampToValueAtTime(.001,now+duration);source.connect(filter);filter.connect(gain);gain.connect(this.masterGain);source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};source.start(now);source.stop(now+duration);
+        if(kind!=='bullet'&&kind!=='wade'){const bubble=this.ctx.createOscillator(),wet=this.ctx.createGain();bubble.type='sine';bubble.frequency.setValueAtTime(kind==='blast'?95:210,now);bubble.frequency.exponentialRampToValueAtTime(45,now+duration);wet.gain.setValueAtTime(.055,now);wet.gain.exponentialRampToValueAtTime(.001,now+duration);bubble.connect(wet);wet.connect(this.masterGain);bubble.onended=()=>{bubble.disconnect();wet.disconnect();};bubble.start(now);bubble.stop(now+duration);}
     }
 
     // Wooden door impact: dry splintering thud.
@@ -554,7 +601,7 @@ class SoundEngine {
     }
 
     playReload(slot='primary',duration=1.3,timing=null) {
-        const pistol=slot==='pistol',prefix=pistol?'pistol':'sniper';
+        const pistol=slot==='pistol'||slot==='assault',prefix=pistol?'pistol':'sniper';
         if(this.playSample(prefix+'MagOut',{volume:.35,group:'reload'})){
             this.playSample(prefix+'MagIn',{volume:.42,delay:Math.max(0,timing?.insert??duration*.58),group:'reload'});
             this.playSample(pistol?'pistolSlide':'sniperBolt',{volume:.38,delay:Math.max(0,timing?.slide??duration*.82),group:'reload'});return;
@@ -592,9 +639,17 @@ class SoundEngine {
         return this.combat.play(key,options);
     }
     stopWeaponSounds() { this.combat.stop('reload');this.combat.stop('weapon'); }
-    playDraw(slot) { this.playSample(slot==='pistol'?'pistolSlide':'sniperDraw',{volume:.26,group:'weapon'}); }
+    playDraw(slot) { this.playSample(slot==='pistol'||slot==='assault'?'pistolSlide':'sniperDraw',{volume:.26,group:'weapon'}); }
     playDryFire() { this.playSample('dryFire',{volume:.3}); }
     playImpact(position) { this.playSample('impact',{volume:.25,rate:.95+Math.random()*.1,position}); }
+    playPlayerHurt(amount,dead=false) {
+        this.combat.stop('playerDamage');
+        if(this.combat.active.size>=this.combat.limit){const voice=this.combat.active.values().next().value;if(voice){this.combat.active.delete(voice);try{voice.source.stop();}catch{}}}
+        const key=dead?(Math.random()<.5?'death1':'death2'):['pain1','pain2','pain3'][Math.floor(Math.random()*3)];
+        if(this.playSample(key,{volume:dead?.65:.5,group:'playerDamage'}))return;
+        this.ensureContext();if(!this.ctx||this.isMuted)return;
+        const now=this.ctx.currentTime,osc=this.ctx.createOscillator(),gain=this.ctx.createGain();osc.type='triangle';osc.frequency.setValueAtTime(dead?95:140,now);osc.frequency.exponentialRampToValueAtTime(35,now+.14);gain.gain.setValueAtTime(Math.min(.4,.16+amount/300),now);gain.gain.exponentialRampToValueAtTime(.001,now+.2);osc.connect(gain);gain.connect(this.masterGain);osc.onended=()=>{osc.disconnect();gain.disconnect();};osc.start(now);osc.stop(now+.21);
+    }
     playPain(position) { this.playSample(['pain1','pain2','pain3'][Math.floor(Math.random()*3)],{volume:.35,position}); }
     playDeath(position) { this.playSample(Math.random()<.5?'death1':'death2',{volume:.4,position}); }
 }

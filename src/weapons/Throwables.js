@@ -2,8 +2,10 @@ import * as THREE from 'three';
 import { createGrenadeModel, applyGrenadePlacement } from '../models/GrenadeModel.js';
 import { soundEngine } from '../audio/SoundEngine.js';
 import { sweepSphere, hasLineOfSight, flashExposure } from './CombatQueries.js';
-import { SmokeCloud } from './SmokeCloud.js';
+import { SmokeCloud,smokeBounds } from './SmokeCloud.js';
+import {DetonationEffects} from './DetonationEffects.js';
 import { createAmmoStores } from './WeaponProfiles.js';
+import {THROW_DURATION,THROW_RELEASE,PIN_DURATION,updateThrowableGrip} from '../models/ThrowableMotion.js';
 import { throwablePose } from '../studio/PoseLibrary.js';
 
 export const GRENADES = Object.freeze({
@@ -19,6 +21,12 @@ export class Throwables {
         this.held = null;
         this.selected = 'frag'; this.counts = { frag: 2, flash: 2, smoke: 2 };
         this.projectiles = []; this.clouds = []; this.bursts = [];
+          this.detonationEffects=new DetonationEffects(scene);
+        // Keep the exact burst geometry and shader available for load-time
+        // warmup instead of introducing a new GPU program at the first blast.
+        this.burstTemplate = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 8), new THREE.MeshBasicMaterial({
+            color: 0xffa33b, transparent: true, depthWrite: false,
+        }));
         this.pending = null; this.flashRemaining = 0; this.flashPeak = 0;
         this.flashOpacity = 0; this.smokeOpacity = 0; this.playerHealth = 100; this.respawnTimer = 0;
         this.status = ''; this.statusTime = 0;
@@ -56,6 +64,7 @@ export class Throwables {
         this.weapon.grenadeEquipped = true;
         this.weapon.grenadeDrawRemaining = 0.4;
         this.weapon.cancelReload(); this.weapon.isAiming = false; this.weapon.pendingShotTime = 0;
+        this.weapon.triggerHeld=false;
         this.weapon.boltActive = false; this.weapon.boltDelay = 0;
         this.weapon.poseRevision = (this.weapon.poseRevision || 0) + 1;
         this.movement.requestWeaponReady?.();
@@ -77,6 +86,7 @@ export class Throwables {
         if (!this.held || this.held.armed || this.pending || this.movement.isDisabled || this.projectiles.length >= 6) return false;
         this.held.armed = true; this.held.age = 0; this.held.pinAge = 0;
         this.counts[this.held.type]--;
+        this.network?.pin(this.held.type);
         soundEngine.playUtility('pin');
         this.message('PIN OUT / 6 SECONDS / LMB HIGH · ALT + LMB LOW');
         return true;
@@ -84,12 +94,16 @@ export class Throwables {
     get fuseRemaining() { return this.held?.armed ? Math.max(0, 6 - this.held.age) : null; }
     throwSelected(mode = 'high') {
         if (!this.held?.armed || this.pending || this.movement.isDisabled) return false;
-        this.weapon.utilityTimer = 0.7;
+        const wait=Math.max(0,PIN_DURATION-this.held.pinAge);
+        this.weapon.utilityTimer = THROW_DURATION+wait;
         this.weapon.throwMode = mode === 'low' ? 'low' : 'high';
-        this.pending = { type: this.held.type, mode: mode === 'low' ? 'low' : 'high', age: 0, released: false };
+        this.pending = { type: this.held.type, mode: mode === 'low' ? 'low' : 'high', age: -wait, released: false };
         this.weapon.throwProgress = 0;
         this.message(mode === 'low' ? 'LOW TOSS' : 'HIGH THROW');
         return true;
+    }
+    syncGrip() {
+        updateThrowableGrip(this.held,this.weapon.armsRig?.bones.RightHand,this.weapon.weaponGroup,!!this.pending);
     }
     launchParameters(mode) {
         const direction = this.camera.getWorldDirection(new THREE.Vector3());
@@ -125,6 +139,7 @@ export class Throwables {
     }
 
     spawn(type, position, velocity) {
+        if(this.network)return this.network.spawn(type,this.weapon.throwMode);
         if (!GRENADES[type] || this.projectiles.length >= 6) return null;
         const mesh = createGrenadeModel(type);
         mesh.position.copy(position);
@@ -135,6 +150,7 @@ export class Throwables {
     }
 
     update(delta) {
+          this.detonationEffects.update(delta);
         this.statusTime = Math.max(0, this.statusTime - delta);
         this.flashRemaining = Math.max(0, this.flashRemaining - delta);
         this.flashOpacity = this.flashPeak * Math.min(1, this.flashRemaining / 1.5);
@@ -160,15 +176,16 @@ export class Throwables {
         if (this.pending) {
             const action = this.pending;
             action.age += delta;
-            const progress = Math.min(1, action.age / 0.7);
+            const progress = Math.min(1, Math.max(0,action.age) / THROW_DURATION);
             this.weapon.throwProgress = progress;
-            if (action.age >= 0.22 && this.held.pinAge >= 0.35 && !action.released) {
+            if (progress >= THROW_RELEASE && this.held.pinAge >= PIN_DURATION && !action.released) {
                 action.released = true;
                 this.held.model.visible = false;
                 const { position, velocity } = this.launchParameters(action.mode);
                 const projectile = this.spawn(action.type, position, velocity);
                 projectile.age = this.held.age; projectile.justReleased = true;
-                projectile.mesh.quaternion.copy(this.held.model.quaternion);
+                // The viewmodel scene is in eye space; projectiles live in the world.
+                this.camera.getWorldQuaternion(projectile.mesh.quaternion).multiply(this.held.model.getWorldQuaternion(new THREE.Quaternion()));
                 projectile.mesh.getObjectByName('SafetyPin').visible = false;
                 this.held.armed = false;
                 soundEngine.playUtility('throw');
@@ -206,12 +223,13 @@ export class Throwables {
             const opacity = cloud.opacityAt(this.camera.position);
             return opacity > 0 && hasLineOfSight(this.scene, cloud.center, this.camera.position) ? opacity : 0;
         }));
+          if(this.volumetricSmoke)this.smokeOpacity=0;
         for (let i = this.bursts.length - 1; i >= 0; i--) {
             const burst = this.bursts[i]; burst.age += delta;
-            burst.mesh.scale.setScalar(1 + burst.age * 13);
-            burst.mesh.material.opacity = Math.max(0, 1 - burst.age / 0.45) * 0.7;
-            if (burst.age > 0.45) {
-                this.scene.remove(burst.mesh); burst.mesh.geometry.dispose(); burst.mesh.material.dispose(); this.bursts.splice(i, 1);
+              burst.mesh.scale.setScalar(1 + burst.age * 12);
+              burst.mesh.material.opacity = Math.max(0, 1 - burst.age / burst.duration) * .85;
+              if (burst.age > burst.duration) {
+                this.scene.remove(burst.mesh); burst.mesh.material.dispose(); this.bursts.splice(i, 1);
             }
         }
     }
@@ -219,6 +237,7 @@ export class Throwables {
     integrate(projectile, delta) {
         const steps = Math.max(1, Math.ceil(delta / (1 / 90))), step = delta / steps;
         for (let i = 0; i < steps && !projectile.resting; i++) {
+            const waterFrom=projectile.position.clone();
             projectile.velocity.y -= 12 * step;
             const next = projectile.position.clone().addScaledVector(projectile.velocity, step);
             let hit = sweepSphere(projectile.position, next, 0.065, this.colliders);
@@ -244,6 +263,7 @@ export class Throwables {
                 projectile.velocity.reflect(hit.normal).multiplyScalar(0.48);
                 this.bounceSound(projectile);
             } else projectile.position.copy(next);
+            this.room?.liquids?.crossing(waterFrom,projectile.position,'grenade',projectile.velocity.length());
             if (projectile.position.y < 0.065) {
                 projectile.position.y = 0.065;
                 projectile.velocity.y = Math.abs(projectile.velocity.y) * 0.35;
@@ -262,23 +282,20 @@ export class Throwables {
     }
 
     detonate(type, position) {
+        if(this.network&&!this.networkReceiving)return;
         this.scene.updateMatrixWorld(true);
         if (type === 'smoke') {
             if (this.clouds.length >= 3) this.clouds.shift().dispose(this.scene);
-            let clip = null;
-            if (this.room) {
-                const r = this.room;
-                const interior = new THREE.Box3(new THREE.Vector3(r.origin.x - 4.86, 0.05, r.frontZ + 0.14),
-                    new THREE.Vector3(r.origin.x + 4.86, 3.16, r.origin.z + 3.86));
-                if (interior.containsPoint(position)) clip = interior;
-            }
+              const clip=smokeBounds(this.room,position);
             this.clouds.push(new SmokeCloud(this.scene, position, clip));
             this.message('SMOKE DEPLOYED');
         } else {
-            const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 8), new THREE.MeshBasicMaterial({
-                color: type === 'flash' ? 0xfff8df : 0xffa33b, transparent: true, depthWrite: false,
-            }));
-            mesh.position.copy(position); this.scene.add(mesh); this.bursts.push({ mesh, age: 0 });
+            const mesh = this.burstTemplate.clone();
+            mesh.material = this.burstTemplate.material.clone();
+            mesh.material.color.setHex(type === 'flash' ? 0xfff8df : 0xffa33b);
+              mesh.userData.ssao=false;
+              mesh.position.copy(position); this.scene.add(mesh); this.bursts.push({ mesh, age: 0,duration:type==='flash'?.065:.13 });
+              this.detonationEffects.burst(type,position);
             if (type === 'flash') this.flash(position);
             else this.explode(position);
         }
@@ -299,6 +316,7 @@ export class Throwables {
     }
 
     explode(position) {
+        if(this.network)return;
         const radius = GRENADES.frag.radius;
         if(this.room?.damageExplosion)this.room.damageExplosion(position,radius);
         if (this.room && !this.room.damageExplosion) {
@@ -336,6 +354,7 @@ export class Throwables {
     }
 
     damagePlayer(damage) {
+        if(this.network)return;
         if (this.playerHealth <= 0) return;
         this.playerHealth = Math.max(0, this.playerHealth - damage);
         if(this.playerHealth>0)soundEngine.playPain();else soundEngine.playDeath();

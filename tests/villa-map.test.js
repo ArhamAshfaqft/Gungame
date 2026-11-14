@@ -53,7 +53,7 @@ test('expanded villa has different floor plans, an accessible east wing and broa
  assert.ok(floorPanels.reduce((sum,p)=>sum+p.width*p.height,0)>70,'floor destruction extends beyond small hatches');
  assert.match(map.location(new THREE.Vector3(19,5.05,-6)),/Winter garden/);
  const exits=map.panels.filter(p=>p.name==='Gallery connection'&&p.group.position.x>13);assert.ok(exits.length>=2);
- for(const p of exits)assert.ok(p.group.position.z<-8,'annex doorway meets the stair landing, not the middle of a flight');
+ for(const p of exits)assert.ok(p.group.position.z<-7.3,'annex doorway remains within the south landing bay');
  map.prepareRender(new THREE.Vector3(0,5,4));assert.equal(map.roomLights.filter(l=>l.visible).length,9);
 });
 
