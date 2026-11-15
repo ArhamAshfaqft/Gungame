@@ -67,3 +67,17 @@ test('a stalled direct connection retries once, then cleans up both failed peers
  const s=setup();s.deps.timeoutMs=10;s.deps.makePeer=()=>{const peer=new FakePeer();s.peers.push(peer);peer.connect=()=>new Connection();return peer;};
  await assert.rejects(connectBrowserRoom('ABCDEFG',options,s.deps),/direct connection timed out/);assert.equal(s.peers.length,2);assert.ok(s.peers.every(p=>p.destroyed));assert.equal(s.events.listeners.size,0);
 });
+
+
+test('failed joins report connection stages and safe ICE diagnostics',async()=>{
+ const s=setup(),progress=[];s.deps.timeoutMs=15;s.deps.onProgress=message=>progress.push(message);
+ s.deps.makePeer=()=>{const peer=new FakePeer();s.peers.push(peer);peer.connect=()=>{
+  const c=new Connection(),rtc=new EventTarget();rtc.remoteDescription={type:'answer',sdp:'must not be copied'};c.peerConnection=rtc;
+  queueMicrotask(()=>{rtc.dispatchEvent(new Event('signalingstatechange'));const candidate=new Event('icecandidate');candidate.candidate={candidate:'private address must not be copied'};rtc.dispatchEvent(candidate);const error=new Event('icecandidateerror');error.errorCode=701;rtc.dispatchEvent(error);c.emit('iceStateChanged','checking');});return c;
+ };return peer;};
+ await assert.rejects(connectBrowserRoom('ABCDEFG',options,s.deps),error=>{
+  assert.equal(error.connectionInfo.remoteAnswer,true);assert.equal(error.connectionInfo.localCandidates,1);assert.deepEqual(error.connectionInfo.stunErrors,[701]);assert.equal(error.connectionInfo.iceState,'checking');
+  assert.ok(!JSON.stringify(error.connectionInfo).includes('must not be copied'));return true;
+ });
+ assert.ok(progress.some(message=>message.includes('retrying')));assert.ok(progress.some(message=>message.includes('Room service connected')));assert.equal(s.events.listeners.size,0);
+});

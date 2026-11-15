@@ -23,15 +23,17 @@ export function multiplayerMenu(game,world){
  const endpoint=params.get('server')||`${location.protocol}//${location.hostname}:${['5180','5181','5173'].includes(location.port)?'2567':location.port|| (location.protocol==='https:'?'443':'80')}`;
  $('mp-address').value=endpoint;$('mp-code').value=params.get('room')||'';game.btnPlay.textContent='CONNECT TO A ROOM FIRST';game.btnPlay.disabled=true;
  game.btnPlay.addEventListener('click',event=>{if(!game.multiplayer?.connected){event.stopImmediatePropagation();status('Create or join a room first.',true);}},true);
+ const diagnostic=document.createElement('button');diagnostic.type='button';diagnostic.textContent='COPY CONNECTION DETAILS';diagnostic.hidden=true;$('mp-status').after(diagnostic);
+ let connectionDetails='';diagnostic.onclick=async()=>{try{await navigator.clipboard.writeText(connectionDetails);status('Connection details copied. Share them here so we can check where joining failed.',true);}catch{status(connectionDetails,true);}};
  let connecting=false;
  const connect=async create=>{
   if(connecting||game.multiplayer?.connected)return;if(!$('mp-side').value){status('Choose Red, Blue, or Spectator before connecting.',true);$('mp-side').focus();return;}const code=$('mp-code').value.trim().toUpperCase();if(!create&&!/^[A-Z2-9]{7}$/.test(code)){status('Enter the 7-character room code from the host.',true);return;}
-  connecting=true;$('mp-create').disabled=$('mp-join').disabled=true;
+  diagnostic.hidden=true;connecting=true;$('mp-create').disabled=$('mp-join').disabled=true;
   const session=new NetworkSession(game,world,status);game.multiplayer=session;
   session.onReady=async()=>{await game.graphicsReady;game.btnPlay.disabled=false;game.btnPlay.textContent=session.own?.spectator?'SPECTATE MATCH':'ENTER PRIVATE MATCH';$('mp-side').disabled=true;$('mp-room-label').textContent='ROOM '+session.code;$('mp-code').value=session.code;$('mp-share').hidden=false;await prepareInvite();game.btnPlay.scrollIntoView({block:'nearest'});};
   session.onFailure=()=>{game.btnPlay.disabled=true;$('mp-create').disabled=$('mp-join').disabled=true;};
   try{await game.graphicsReady;await session.connect($('mp-address').value.trim(),create?'':code,{browserHost:browserMode,name:$('mp-name').value,map:game.mapId,password:$('mp-password').value,side:$('mp-side').value,balanceHost:create&&$('mp-balance').checked});try{localStorage.setItem('fast-snipe-network-name',$('mp-name').value);}catch{}}
-  catch(error){status(error.message||'Could not connect.',true);game.multiplayer=null;$('mp-create').disabled=$('mp-join').disabled=false;}
+  catch(error){status(error.message||'Could not connect.',true);if(error.connectionInfo){connectionDetails=JSON.stringify({message:error.message,...error.connectionInfo,browser:navigator.userAgent},null,2);diagnostic.hidden=false;}game.multiplayer=null;$('mp-create').disabled=$('mp-join').disabled=false;}
   finally{connecting=false;}
  };
  $('mp-create').onclick=()=>connect(true);$('mp-join').onclick=()=>connect(false);

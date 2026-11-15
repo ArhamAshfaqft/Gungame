@@ -20,7 +20,7 @@ import {ProjectilePresentation} from './ProjectilePresentation.js';
 export class NetworkSession{
  constructor(game,world,status){this.game=game;this.world=world;this.status=status;this.active=true;this.connected=false;this.remotes=new Map();this.grenades=new Map();this.pending=[];this.batch=[];this.seq=0;this.actionSeq=0;this.accumulator=0;this.chain=Promise.resolve();this.wasDead=false;this.ping=0;this.own=null;this.effects=new FrameWorkQueue(2);}
  async connect(address,code,options){
-  this.status('Connecting to the host…');if(options.browserHost){this.room=await connectBrowserRoom(code,options);}else{const url=new URL(address);if(!['http:','https:','ws:','wss:'].includes(url.protocol)||url.username||url.password)throw Error('Use the host’s http:// address.');
+  this.status('Connecting to the host…');if(options.browserHost){this.room=await connectBrowserRoom(code,options,{onProgress:message=>this.status(message)});}else{const url=new URL(address);if(!['http:','https:','ws:','wss:'].includes(url.protocol)||url.username||url.password)throw Error('Use the host’s http:// address.');
   const client=new Client(url.href),request=code?client.joinById(code.toUpperCase(),{...options,protocol:PROTOCOL}):client.create('private',{...options,protocol:PROTOCOL});
   let timeout;const timer=new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('Cannot reach the host. Check the address, server window and Wi-Fi.')),15000);});
   try{this.room=await Promise.race([request,timer]);}catch(error){request.then(room=>room.leave()).catch(()=>{});throw connectionProblem(error,url.href);}finally{clearTimeout(timeout);}}
