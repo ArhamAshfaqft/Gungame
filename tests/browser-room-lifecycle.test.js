@@ -81,3 +81,15 @@ test('failed joins report connection stages and safe ICE diagnostics',async()=>{
  });
  assert.ok(progress.some(message=>message.includes('retrying')));assert.ok(progress.some(message=>message.includes('Room service connected')));assert.equal(s.events.listeners.size,0);
 });
+
+
+test('a slow ICE negotiation can finish after the old fifteen-second deadline',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const s=setup();delete s.deps.timeoutMs;let connection,finished=false;
+ s.deps.makePeer=()=>{const peer=new FakePeer();s.peers.push(peer);peer.connect=()=>{connection=new Connection();connection.respond=()=>queueMicrotask(()=>connection.emit('data',{type:'accepted',data:{}}));return connection;};return peer;};
+ const pending=connectBrowserRoom('ABCDEFG',options,s.deps).then(room=>{finished=true;return room;});
+ await new Promise(resolve=>setImmediate(resolve));
+ t.mock.timers.tick(20000);await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(finished,false);assert.equal(s.peers.length,1);assert.ok(!s.peers[0].destroyed,'active ICE checks must not be cancelled at fifteen seconds');
+ connection.open=true;connection.emit('open');const room=await pending;room.leave();assert.equal(s.events.listeners.size,0);
+});

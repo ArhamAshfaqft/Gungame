@@ -1,3 +1,4 @@
+import {updateConnectionDetails} from './ConnectionDiagnostics.js';
 import {PROTOCOL} from './Protocol.js';
 import {loadIceConfig,joinTimeoutMessage} from './IceConfig.js';
 const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -27,8 +28,8 @@ async function connectAttempt(code,options,ice,dependencies){
  const close=()=>{if(closed)return;closed=true;clearTimeout(timeout);clearTimeout(reconnectTimer);events.removeEventListener('pagehide',close);for(const cleanup of [...guestCleanups.values()])cleanup();worker?.terminate();peer.destroy();for(const fn of room.leaves)fn();};
  room.leave=close;
  let accept,reject;const result=new Promise((resolve,fail)=>{accept=resolve;reject=fail;});
- const fail=(message,retryable=false)=>{if(closed)return;if(!settled){settled=true;reject(Object.assign(Error(message),{retryable,connectionInfo:{...room.connectionInfo,stunErrors:[...room.connectionInfo.stunErrors],relayAvailable:ice.relayAvailable}}));close();}else{for(const fn of room.errors)fn(4000,message);close();}};
- const timeout=setTimeout(()=>fail(hosting?'Could not start the browser host. Please refresh and try again.':joinTimeoutMessage({...room.connectionInfo,relayAvailable:ice.relayAvailable}),!hosting),dependencies.timeoutMs||(hosting?30000:15000));
+ const fail=(message,retryable=false)=>{if(closed)return;if(!settled){updateConnectionDetails(room.connectionInfo,connection?.peerConnection);settled=true;reject(Object.assign(Error(message),{retryable,connectionInfo:{...room.connectionInfo,stunErrors:[...room.connectionInfo.stunErrors],relayAvailable:ice.relayAvailable}}));close();}else{for(const fn of room.errors)fn(4000,message);close();}};
+ const timeout=setTimeout(()=>fail(hosting?'Could not start the browser host. Please refresh and try again.':joinTimeoutMessage({...room.connectionInfo,relayAvailable:ice.relayAvailable}),!hosting),dependencies.timeoutMs||(hosting?30000:35000));
  const deliver=(type,data)=>{if(type==='accepted'){if(!settled){settled=true;clearTimeout(timeout);accept(room);}return;}if(type==='rejected'){fail(data);return;}room.deliver(type,data);};
  const reconnect=()=>{if(closed||reconnectTimer)return;reconnectTimer=setTimeout(()=>{reconnectTimer=null;if(!closed&&peer.disconnected&&!peer.destroyed){try{peer.reconnect();}catch{reconnect();}}},dependencies.reconnectMs||1500);};
  peer.on('error',error=>{
@@ -51,7 +52,7 @@ async function connectAttempt(code,options,ice,dependencies){
    peer.on('connection',guest=>{
     if(guests.size>=3){guest.on('open',()=>{guest.send({type:'rejected',data:'This room is full.'});setTimeout(()=>guest.close(),500);});return;}
     const guestId=crypto.randomUUID();guests.set(guestId,guest);let joined=false,count=0,removed=false;const rate=setInterval(()=>{count=0;},1000);
-    const pending=setTimeout(()=>{cleanup();guest.close();},dependencies.guestTimeoutMs||20000);
+    const pending=setTimeout(()=>{cleanup();guest.close();},dependencies.guestTimeoutMs||45000);
     const cleanup=()=>{if(removed)return;removed=true;clearInterval(rate);clearTimeout(pending);guests.delete(guestId);guestCleanups.delete(guestId);if(!closed)worker?.postMessage({kind:'leave',id:guestId});};guestCleanups.set(guestId,cleanup);
     guest.on('data',message=>{if(removed||!message||++count>120||typeof message!=='object')return;if(!joined){if(message.type!=='hello')return;joined=true;clearTimeout(pending);worker.postMessage({kind:'join',id:guestId,data:message.data});return;}worker.postMessage({kind:'message',id:guestId,type:message.type,data:message.data});});
     guest.on('error',()=>{cleanup();guest.close();});guest.on('close',cleanup);
@@ -62,10 +63,10 @@ async function connectAttempt(code,options,ice,dependencies){
    connection=peer.connect(`fast-snipe-v${PROTOCOL}-${code}`,{reliable:true,serialization:'binary'});
    const rtc=connection.peerConnection;
    if(rtc){
-    const answer=()=>{room.connectionInfo.remoteAnswer=!!rtc.remoteDescription;};
+    const answer=()=>{updateConnectionDetails(room.connectionInfo,rtc);};
     rtc.addEventListener('signalingstatechange',answer);
     rtc.addEventListener('icecandidate',event=>{if(event.candidate)room.connectionInfo.localCandidates++;answer();});
-    rtc.addEventListener('icecandidateerror',event=>{const code=event.errorCode;if(code&&!room.connectionInfo.stunErrors.includes(code))room.connectionInfo.stunErrors.push(code);});
+    rtc.addEventListener('icecandidateerror',event=>{const code=event.errorCode;if(code&&!room.connectionInfo.stunErrors.includes(code))room.connectionInfo.stunErrors.push(code);const server=typeof event.url==='string'?event.url.match(/^stun:([^/?#]+)/)?.[1]:null;if(server)(room.connectionInfo.unreachableDiscoveryServers??=[]).includes(server)||room.connectionInfo.unreachableDiscoveryServers.push(server);});
    }
    room.send=(type,data)=>connection.send({type,data});
    connection.on('iceStateChanged',state=>{room.connectionInfo.iceState=state;});
