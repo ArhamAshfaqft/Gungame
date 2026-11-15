@@ -28,6 +28,7 @@ async function start(){
  for(const [rig,rifle] of [[baseline,rifleA],[preview,rifleB]]){rig.object.add(rifle);rig.animatedModel=rifle;rig.animatedKind='rifle';rig.animatedSlot='primary';rig.object.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});scene.add(rig.object);}
  baseline.resolveAnimationPose=()=>applySniperM4Pose(baseline,library,'primary',0,{clip:baseline.animator.current,time:baseline.animator.actions.get(baseline.animator.current)?.time||0,state:'hip'});
  baseline.peekPoses=library.peekPoses;baseline.peekTimelines=library.peekTimelines;
+ const markers=[[baseline,$('baseline-state').parentElement],[preview,$('preview-state').parentElement]],labelPoint=new T.Vector3();
  const keys=new Set(),position=new T.Vector3();let automatic=true,paused=false,time=0,heading=0,speed=0,forward=1,lateral=0,previousTime=performance.now(),inputState=null;
  function reset(){camera.position.sub(position);position.set(0,0,0);time=0;heading=0;speed=0;forward=1;lateral=0;keys.clear();}
  function showMode(){ $('demo').textContent=automatic?'Automatic comparison':'Manual control — click for demo'; }
@@ -69,7 +70,15 @@ async function start(){
   }
   const clipLabel=rig=>rig.animator.pack.clips.find(c=>c.id===rig.animator.current)?.name||'Idle';$('baseline-state').textContent=clipLabel(baseline);$('preview-state').textContent=clipLabel(preview);status.textContent=`${automatic?'Automatic':'Manual'} · ${input.label} · ${speed.toFixed(1)} m/s${paused?' · paused':''}`;
   const width=canvas.clientWidth,height=canvas.clientHeight;if(canvas.width!==Math.round(width*renderer.getPixelRatio())||canvas.height!==Math.round(height*renderer.getPixelRatio())){renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();}
-  orbit.update();renderer.render(scene,camera);
+  orbit.update();camera.updateMatrixWorld(true);
+  for(const [rig,label] of markers){
+   rig.object.updateWorldMatrix(true,true);
+   rig.bones.Head.getWorldPosition(labelPoint);labelPoint.y+=.28;labelPoint.project(camera);
+   label.hidden=labelPoint.z< -1||labelPoint.z>1||Math.abs(labelPoint.x)>1||Math.abs(labelPoint.y)>1;
+   label.style.left=`${(labelPoint.x*.5+.5)*width}px`;
+   label.style.top=`${(-labelPoint.y*.5+.5)*height}px`;
+  }
+  renderer.render(scene,camera);
  }
  // Read-only inspection hook for automated preview checks; no main-game state.
  window.__animationPreview={baseline,preview,get state(){return{automatic,paused,time,speed,position:position.toArray(),crouched:!!inputState?.isCrouching,lean:inputState?.lean||0,forward:inputState?.forward||0,lateral:inputState?.lateral||0};}};
