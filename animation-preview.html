@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FAST SNIPE · Animation comparison</title><link rel="icon" href="data:,"></head>
+<body>
+ <header><div><small>FAST SNIPE · SINGLE-PLAYER PREVIEW</small><h1>Movement comparison</h1><p>Your regular game and multiplayer keep their existing animations.</p></div><a href="/?map=villa">Back to game</a></header>
+ <main><canvas id="preview"></canvas><div class="labels"><span>Existing system <b id="baseline-state"></b></span><span>New movement preview <b id="preview-state"></b></span></div><div id="status" role="status">Loading the soldier and animation clips…</div></main>
+ <footer><div class="controls"><button id="demo" disabled>Automatic comparison</button><button id="pause" disabled>Pause</button><button id="reset" disabled>Reset position</button><label>Left soldier <select id="baseline"><option value="game">Current pose corrections</option><option value="source">Without pose corrections</option></select></label><label>Playback <select id="rate"><option value="1">Normal</option><option value="0.5">Half speed</option><option value="0.25">Quarter speed</option></select></label></div><p>WASD: move · Shift: sprint · ← / →: turn · Drag: orbit · Wheel: zoom. Movement keys switch to manual control.</p><p id="details">First pass: standing rifle movement, directional blending, gait timing, stops and turns. Crouching, leaning, jumping and vaulting stay out of this comparison.</p></footer>
+ <script type="module" src="/src/animation-preview/main.js"></script>
+</body></html>
