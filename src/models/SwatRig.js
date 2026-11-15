@@ -257,9 +257,12 @@ export class SwatRig {
         const { Left: left, Right: right } = handTargets({ pose, throwProgress, pinProgress, throwMode });
         const sharedThrow=this.armsOnly&&pose==='throw'&&throwMode!=='low'&&throwProgress>0?firstPersonThrowSample(throwProgress):null;
         const limbLength=side=>this.bones[side+'Arm'].getWorldPosition(new THREE.Vector3()).distanceTo(this.bones[side+'ForeArm'].getWorldPosition(new THREE.Vector3()))+this.bones[side+'ForeArm'].getWorldPosition(new THREE.Vector3()).distanceTo(this.bones[side+'Hand'].getWorldPosition(new THREE.Vector3()));
-        const throwReach=sharedThrow?limbLength('Right')*.75:0;
+        const throwReach=sharedThrow?limbLength('Right'):0;
         if(sharedThrow){
             right.set(.035,-.12,.025).addScaledVector(sharedThrow.offset,throwReach);
+            right.y+=.16*sharedThrow.weight;
+            // Keep the cocked hand beside the eye, ahead of the near plane.
+            right.x+=.12*sharedThrow.weight;right.z-=.22*sharedThrow.weight;
             left.set(-.18,-.23,.12).addScaledVector(firstPersonThrowSample(throwProgress,'Left').offset,limbLength('Left')*.45);
         }
         const rotations = { ...gripRotation };
@@ -279,6 +282,12 @@ export class SwatRig {
                 const shoulder = side === 'Left' ? new THREE.Vector3(-0.28, -0.34, 0.04) : new THREE.Vector3(0.30, -0.36, 0.26);
                 const upper = this.bones[`${side}Arm`];
                 if (custom) shoulder.add(new THREE.Vector3().fromArray(custom[side].shoulder));
+                if(side==='Right'&&sharedThrow){
+                    // Let the shoulder rise with the overhand wind-up. A fixed
+                    // rifle shoulder clamps the wrist below eye level in IK.
+                    shoulder.addScaledVector(sharedThrow.offset,throwReach*.35);
+                    shoulder.y+=.22*sharedThrow.weight;
+                }
                 if(side==='Right'&&pose==='throw'&&!sharedThrow)shoulder.add(throwableMotion(throwProgress,throwMode).offset);
                 const world = reference.localToWorld(shoulder);
                 upper.position.copy(upper.parent.worldToLocal(world));

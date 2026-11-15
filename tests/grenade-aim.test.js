@@ -49,3 +49,14 @@ test('arc buffers are reused, have visible pixel width, and keep overlays out of
  guide.update(prediction,'low',camera);assert.equal(guide.geometry.attributes.instanceStart.data,buffer);assert.equal(guide.mode,'low');
  guide.traverse(o=>{assert.equal(o.userData.ssao,false);assert.ok(!o.userData.isShootable);});assert.equal(guide.arc.material.depthTest,true,'cover must hide the trajectory instead of exposing routes through walls');
 });
+
+
+test('guide keeps every ballistic point unshifted, including its connected marker endpoint',()=>{
+ const guide=new GrenadeAimGuide(),camera=new T.PerspectiveCamera(),prediction=predictGrenade({position:v(0,1.65,0),velocity:v(0,2.2,-11)},5,{colliders:[]},{firstContactOnly:true});
+ guide.update(prediction,'high',camera);
+ assert.ok(guide.marker.position.equals(prediction.position));
+ const data=guide.geometry.attributes.instanceStart.data.array;
+ for(let i=0;i<prediction.points.length-1;i++)for(let j=0;j<3;j++)assert.ok(Math.abs(data[i*6+j]-prediction.points[i].getComponent(j))<1e-5);
+ const offset=(prediction.points.length-2)*6+3;
+ assert.ok(v().fromArray(data,offset).distanceTo(guide.marker.position)<1e-5);
+});

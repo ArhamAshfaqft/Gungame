@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {sweepDamagedPanel} from './PanelSweep.js';
 
 // A hollow stair flight occupies a sloping slab, rather than its entire AABB.
 function sweepStair(start,end,radius,box){
@@ -24,8 +25,19 @@ function sweepStair(start,end,radius,box){
 export function sweepSphere(start, end, radius, colliders, ignore = null) {
     const delta = end.clone().sub(start);
     let result = null;
+    const checkedPanels=new Set();
     for (const box of colliders) {
         if (box.playerOnly||ignore?.(box)) continue;
+        const panel=box.villaPanel;
+        if(panel?.pieces&&panel.mesh&&(panel.punctures||panel.broken.size)){
+            if(checkedPanels.has(panel))continue;
+            // Only invoke the damage narrow phase after a cheap world bound hit.
+            if(!new THREE.Box3().setFromPoints([start,end]).expandByScalar(radius).intersectsBox(box))continue;
+            checkedPanels.add(panel);
+            const hit=sweepDamagedPanel(start,end,radius,panel,box);
+            if(hit&&(!result||hit.time<result.time))result=hit;
+            continue;
+        }
         if(box.doorGroup){const group=box.doorGroup;group.updateWorldMatrix(true,false);const hit=sweepSphere(group.worldToLocal(start.clone()),group.worldToLocal(end.clone()),radius,[box.doorBounds]);if(hit&&(!result||hit.time<result.time)){hit.normal.transformDirection(group.matrixWorld);hit.box=box;result=hit;}continue;}
         if(box.ramp?.thickness){const hit=sweepStair(start,end,radius,box);if(hit&&(!result||hit.time<result.time))result=hit;continue;}
         let enter = 0, exit = 1, axis = -1, sign = 0, valid = true;
