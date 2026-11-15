@@ -57,3 +57,14 @@ test('low fallen door remnants can be stepped over without disabling tall debris
  const tall=new T.Box3(new T.Vector3(-.6,0,-.4),new T.Vector3(.6,.9,.4));tall.supportMesh={userData:{breakable:{isDoor:true,detachedEnvironment:true}}};
  p.resolveBoxCollision(tall,0);assert.equal(p.position.y,1.65);assert.ok(Math.abs(p.position.z)>=.849,'large upright remnants cannot be climbed as a low step');
 });
+
+
+test('stepping over low debris requires full body clearance below shelves and ceilings',()=>{
+ for(const height of [1.65,1.05]){
+  const make=()=>{const p=new MovementController(new T.PerspectiveCamera(),null,{input:false});p.currentHeight=height;p.position.set(0,height,0);p.isGrounded=true;return p;};
+  const low=new T.Box3(new T.Vector3(-1,0,-1),new T.Vector3(1,.12,1));
+  const ceiling=new T.Box3(new T.Vector3(-1,height+.04,-1),new T.Vector3(1,height+.24,1));
+  const blocked=make();blocked.lastColliders=[low,ceiling];blocked.resolveBoxCollision(low,0);assert.equal(blocked.position.y,height,'never step the head into overhead geometry');
+  const clear=make();clear.lastColliders=[low];clear.resolveBoxCollision(low,0);assert.ok(Math.abs(clear.position.y-height-.12)<1e-7,'low debris with room above remains walkable');
+ }
+});

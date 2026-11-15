@@ -47,3 +47,16 @@ test('top-floor stairwell lips are guarded and stair-side corridors have useful 
  assert.ok(2.7-1.3>=1.39);assert.ok(14-12.55>=1.44);
  assert.ok(!m.wallSpecs.some(w=>w.axis==='x'&&w.coord===9&&w.base===3.4&&w.to===-4.7),'no pantry fin projects into the kitchen');
 });
+
+
+test('touching the kitchen bottle rack from either side cannot lift the player upstairs',()=>{
+ const map=make();
+ for(const side of [-1,1])for(const crouched of [false,true]){
+  const p=new MovementController(new T.PerspectiveCamera(),null,{input:false});
+  p.currentHeight=crouched?p.crouchHeight:p.standHeight;p.isCrouching=crouched;p.keys.crouch=crouched;
+  p.position.set(side<0?8.9:11.5,3.4+p.currentHeight,-9.5);p.isGrounded=true;p.isLocked=true;p.keys[side<0?'left':'right']=true;
+  const initialFeet=p.position.y-p.currentHeight;let highestFeet=initialFeet;
+  for(let frame=0;frame<180;frame++){p.update(1/60,map.colliders);highestFeet=Math.max(highestFeet,p.position.y-p.currentHeight);}
+  assert.ok(highestFeet<=initialFeet+.05,`rack lifted player by ${highestFeet-initialFeet}m from side ${side}`);
+ }
+});

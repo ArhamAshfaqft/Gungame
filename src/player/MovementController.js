@@ -587,6 +587,20 @@ export class MovementController {
         return true;
     }
 
+    hasStepClearance(step,feet) {
+        // A low surface is only a step if the whole player fits above it.
+        // Without this, vertically stacked shelves become an automatic ladder.
+        const p=this.position,r=.45,head=feet+this.currentHeight;
+        for(const box of this.lastColliders||[]){
+            // Sloped stairs and their side guards resolve in their own shape
+            // handlers; their broad bounds include empty space above treads.
+            if(box===step||box.ramp||box.stairGuard||box.max.y<=feet+.001||box.min.y>=head-.001)continue;
+            const x=Math.max(box.min.x,Math.min(p.x,box.max.x)),z=Math.max(box.min.z,Math.min(p.z,box.max.z));
+            if((p.x-x)**2+(p.z-z)**2<r*r)return false;
+        }
+        return true;
+    }
+
     resolveBoxCollision(box, previousFeet = this.position.y - this.currentHeight, allowStep = true) {
         if(box.doorGroup){
             // Resolve against the leaf in its own coordinates. Its world AABB
@@ -647,7 +661,7 @@ export class MovementController {
         if (p.x > minX && p.x < maxX && p.z > minZ && p.z < maxZ) {
             // Step-up mechanic (if box is low like a ramp/step <= 0.5m)
             const stepUpHeight = box.max.y;
-            if (allowStep && stepUpHeight-previousFeet<=.55 && this.velocity.y <= 0 && (previousFeet >= stepUpHeight - 0.001 ||
+            if (allowStep && stepUpHeight-previousFeet<=.55 && this.velocity.y <= 0 && (stepUpHeight<=previousFeet+.001||this.hasStepClearance(box,stepUpHeight)) && (previousFeet >= stepUpHeight - 0.001 ||
                 (this.isGrounded && p.y - h >= stepUpHeight - 0.55))) {
                 p.y = stepUpHeight + h;
                 this.velocity.y = 0;
