@@ -1,3 +1,4 @@
+import {MovementController} from '../src/player/MovementController.js';
 import {puncturePanel} from '../src/world/PanelPuncture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -266,5 +267,28 @@ test('door joinery UVs stay anchored after repeated bullet punctures; wall tilin
   check();
   for(const x of [.7,1.1]){const point=panel.mesh.localToWorld(new THREE.Vector3(x,1.3,panel.thickness/2));assert.equal(puncturePanel(panel,point,new THREE.Vector3(0,0,-1),1500),true);check();}
   assert.equal(panel.punctures,2);
+ }
+});
+
+test('both exterior stair landings have continuous visible support at every door-side corner',()=>{
+ const map=new VillaMap(new THREE.Scene()),meshes=[];map.scene.traverse(m=>{if(m.isMesh&&m.userData.collider)meshes.push(m);});
+ for(const side of [-1,1])for(let x=14.125;x<17.75;x+=.25)for(let z=2.125;z<6.65;z+=.25){
+  const px=side*x,boxes=map.colliders.filter(b=>!b.ramp&&Math.abs(b.max.y-3.4)<.0001&&px>b.min.x+.0001&&px<b.max.x-.0001&&z>b.min.z+.0001&&z<b.max.z-.0001);
+  assert.equal(boxes.length,1,`landing must have exactly one floor slab at ${px},${z}`);
+  const mesh=boxes[0].supportMesh;assert.ok(mesh?.visible);const ray=new THREE.Raycaster(new THREE.Vector3(px,3.6,z),new THREE.Vector3(0,-1,0),0,.3),hits=[];mesh.raycast(ray,hits);assert.ok(hits.some(h=>Math.abs(h.point.y-3.4)<.0001),'landing collider must have a matching visible surface');
+ }
+ for(const x of [-19.5,-18,-17.5,-16.5,-15,15,16.5]){
+  const point=new THREE.Vector3(x,3.3,3.1);assert.ok(map.colliders.some(b=>!b.ramp&&b.containsPoint(point)),'wellness and side-entry thresholds stay supported');
+ }
+});
+
+test('walking up either outside stair and across the former corner hole never drops the player',()=>{
+ const map=new VillaMap(new THREE.Scene());
+ for(const side of [-1,1]){
+  const m=new MovementController(new THREE.PerspectiveCamera(),null,{input:false});m.position.set(side*16.5,1.65,14.1);m.isGrounded=true;m.keys.forward=true;m.yaw=0;
+  for(let i=0;i<420&&m.position.z>2.85;i++){m.update(1/60,map.colliders,[]);if(m.position.z<6.5)assert.ok(Math.abs(m.position.y-m.currentHeight-3.4)<.03,'top landing stays level');}
+  assert.ok(m.position.z<3.1,'route reaches the doorway landing');m.yaw=side*Math.PI/2;
+  for(let i=0;i<100;i++){m.update(1/60,map.colliders,[]);assert.ok(Math.abs(m.position.y-m.currentHeight-3.4)<.03,'former door-side corner is walkable');}
+  assert.ok(Math.abs(m.position.x)<15.25,'player actually crosses the previously empty corner');
  }
 });

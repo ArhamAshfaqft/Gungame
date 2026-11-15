@@ -8,7 +8,8 @@ export function buildWellnessWing(m){
  m.wall('x',-23,-10,2,y,[{at:-5,width:7,height:2.55,sill:.3,kind:'glass'}],'stone');
  m.wall('z',-10,-23,-14,y,[{at:-18,width:3,height:2.2,sill:.6,kind:'glass'}],'plaster',true);
  m.wall('z',2,-23,-14,y,[{at:-18,width:1.2,height:2.3,kind:'door',name:'Wellness courtyard door'},{at:-21,width:2.2,height:2.1,sill:.6,kind:'glass'}],'plaster',true);
- b(-18,3.28,3.1,4.2,.24,2.2,'stone');
+ // Meet the side stair landing at x=-17.75 without duplicate coplanar slabs.
+ b(-18.925,3.28,3.1,2.35,.24,2.2,'stone');
  m.rug(-21,y,-4.5,2.2,7,'blueRug');
  // Two low treadmills provide kneeling cover; their frames and consoles attach
  // to the same floor footprints instead of filling the circulation lane.

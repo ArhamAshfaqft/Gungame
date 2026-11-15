@@ -160,11 +160,12 @@ export class VillaMap{
   cutSlab(this,[-22,22,-33,-11],1.58,3.16,'earth');cutSlab(this,[-17,17,-29,-11],3.32,.16,'stone');
   this.box(-21,1.58,-1,6,3.16,20,'earth');this.box(27,1.58,-1,6,3.16,20,'earth');
   this.stairs(0,0,16.5,7,4.8,3.4,'Front approach');this.box(0,3.28,12,5,.24,2.3,'stone');
-  this.stairs(-16.5,0,10.1,7,2.5,3.4,'Garden stair');this.box(-16.5,3.28,4.325,2.5,.24,4.65,'stone');
-  this.stairs(16.5,0,10.1,7,2.5,3.4,'Service approach');this.box(16.5,3.28,4.325,2.5,.24,4.65,'stone');
-  // Side entries meet a landing instead of opening onto the gap beside a flight.
+  this.stairs(-16.5,0,10.1,7,2.5,3.4,'Garden stair');
+  this.stairs(16.5,0,10.1,7,2.5,3.4,'Service approach');
+  // A continuous rectangular landing joins the house, side wing and stair head.
+  // Separate L-shaped slabs previously left an open corner by each pair of doors.
   for(const side of [-1,1]){
-   this.box(side*15.25,3.28,5,2.5,.24,3.2,'stone');
+   this.box(side*15.875,3.28,4.325,3.75,.24,4.65,'stone').name='Side stair landing';
    this.box(side*17.8,3.9,5,.08,1,3.2,'metal');this.box(side*14.55,3.9,6.65,1.1,1,.08,'metal');
   }
   for(let i=0;i<8;i++)this.box(7,0.025,20+i*1.5,2.8,.055,.7,'stone',false,true);
