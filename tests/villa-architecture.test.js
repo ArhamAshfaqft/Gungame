@@ -60,3 +60,15 @@ test('touching the kitchen bottle rack from either side cannot lift the player u
   assert.ok(highestFeet<=initialFeet+.05,`rack lifted player by ${highestFeet-initialFeet}m from side ${side}`);
  }
 });
+
+
+test('both internal stairs reach every finished landing without jumping',()=>{
+ const map=make();
+ for(const base of [0,3.4])for(const x of [0,11.5])for(const crouched of [false,true]){
+  const p=new MovementController(new T.PerspectiveCamera(),null,{input:false});p.currentHeight=crouched?p.crouchHeight:p.standHeight;p.isCrouching=crouched;
+  p.position.set(x,base+p.currentHeight,-.5);p.yaw=0;p.isGrounded=true;p.keys.forward=true;
+  for(let frame=0;frame<400&&p.position.z>-9;frame++)p.update(1/60,map.colliders);
+  assert.ok(p.position.z<-9,`stair ${x} from ${base} snagged before the landing`);
+  assert.ok(Math.abs(p.position.y-p.currentHeight-base-3.4)<.03,'feet reach the finished landing height');
+ }
+});

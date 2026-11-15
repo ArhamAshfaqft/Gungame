@@ -590,13 +590,24 @@ export class MovementController {
     hasStepClearance(step,feet) {
         // A low surface is only a step if the whole player fits above it.
         // Without this, vertically stacked shelves become an automatic ladder.
-        const p=this.position,r=.45,head=feet+this.currentHeight;
+        const p=this.position,r=.45;
+        const overlaps=box=>{
+            const x=Math.max(box.min.x,Math.min(p.x,box.max.x)),z=Math.max(box.min.z,Math.min(p.z,box.max.z));
+            return (p.x-x)**2+(p.z-z)**2<r*r;
+        };
+        // A landing's concrete slab and thin finish are separate colliders.
+        // Check clearance above the finished surface, not inside that finish.
+        let top=feet;
+        for(const box of this.lastColliders||[]){
+            if(box===step||box.ramp||box.stairGuard||box.min.y<feet-.002||box.min.y>feet+.002||box.max.y>feet+.05)continue;
+            if(overlaps(box))top=Math.max(top,box.max.y);
+        }
+        const head=top+this.currentHeight;
         for(const box of this.lastColliders||[]){
             // Sloped stairs and their side guards resolve in their own shape
             // handlers; their broad bounds include empty space above treads.
-            if(box===step||box.ramp||box.stairGuard||box.max.y<=feet+.001||box.min.y>=head-.001)continue;
-            const x=Math.max(box.min.x,Math.min(p.x,box.max.x)),z=Math.max(box.min.z,Math.min(p.z,box.max.z));
-            if((p.x-x)**2+(p.z-z)**2<r*r)return false;
+            if(box===step||box.ramp||box.stairGuard||box.max.y<=top+.001||box.min.y>=head-.001)continue;
+            if(overlaps(box))return false;
         }
         return true;
     }
