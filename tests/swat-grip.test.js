@@ -290,7 +290,7 @@ test('throwable grip remains attached through windup and release despite differe
   applyGrenadePlacement(model,t,mode,{item:{position:[0,0,0],rotation:[0,0,0]}});
   Throwables.prototype.syncGrip.call(equipment);
   const actual=rig.bones.RightHand.matrixWorld.clone().invert().multiply(model.matrixWorld);
-  assert.ok(actual.elements.every((n,i)=>Math.abs(n-anchor.elements[i])<1e-6));
+  assert.ok(actual.elements.every((n,i)=>Math.abs(n-anchor.elements[i])<1e-6),`${mode} ${t}: ${Math.max(...actual.elements.map((n,i)=>Math.abs(n-anchor.elements[i])))}`);
  }
  assert.ok(throwableMotion(.55).open>.9,'fingers open after release');
  assert.ok(throwableMotion(.25,'high').offset.y>0&&throwableMotion(.25,'low').offset.y<0);

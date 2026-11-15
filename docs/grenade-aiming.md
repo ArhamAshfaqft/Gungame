@@ -24,8 +24,11 @@ remain in place.
 
 The guide uses fixed line buffers, two screen-width line draws and small marker
 meshes, without lights or physics bodies. It is excluded from SSAO and projectile
-hit tests. Hand poses are restored to their state before the indicator update;
-saved firearm poses and the existing imported third-person throw are retained.
+hit tests. Holding and pin-pull hand poses retain their pre-indicator behavior.
+First-person high throws now sample the same baked Militia clip and release clock
+as third person, with camera-axis conversion and reach scaled to the view arms.
+The grenade retains its palm attachment until release. Low-toss motion and saved
+firearm poses retain their existing behavior.
 
 Verification: `tests/grenade-aim.test.js` compares flight across 30/60/144 Hz,
 wall/floor bounces, cooked endpoints, glass, support removal and buffer reuse.

@@ -10,7 +10,7 @@ import {ASSAULT_LEFT_GRIP,ASSAULT_RIGHT_GRIP} from './AssaultRifleModel.js';
 import {solveHandContact} from '../studio/HandContact.js';
 import {measurePalm,bindPalmGripFrames,fitPalmGrip,keepPalmTargetsReachable,palmWorldPosition,prepareM4HoldingArms,isM4StandingIdle} from './PalmGripFrames.js';
 
-import {throwableHandTargets,throwableMotion,poseThrowableBody} from './ThrowableMotion.js';
+import {throwableHandTargets,throwableMotion,poseThrowableBody,firstPersonThrowSample} from './ThrowableMotion.js';
 let assetPromise;
 const normalizeName = name => name.replace(/^mixamorig[:_]?/i, '').replace(/_\d+$/, '');
 const axisX = new THREE.Vector3(1, 0, 0);
@@ -255,6 +255,13 @@ export class SwatRig {
         this.object.updateMatrixWorld(true);
         reference.updateWorldMatrix(true, false);
         const { Left: left, Right: right } = handTargets({ pose, throwProgress, pinProgress, throwMode });
+        const sharedThrow=this.armsOnly&&pose==='throw'&&throwMode!=='low'&&throwProgress>0?firstPersonThrowSample(throwProgress):null;
+        const limbLength=side=>this.bones[side+'Arm'].getWorldPosition(new THREE.Vector3()).distanceTo(this.bones[side+'ForeArm'].getWorldPosition(new THREE.Vector3()))+this.bones[side+'ForeArm'].getWorldPosition(new THREE.Vector3()).distanceTo(this.bones[side+'Hand'].getWorldPosition(new THREE.Vector3()));
+        const throwReach=sharedThrow?limbLength('Right')*.75:0;
+        if(sharedThrow){
+            right.set(.035,-.12,.025).addScaledVector(sharedThrow.offset,throwReach);
+            left.set(-.18,-.23,.12).addScaledVector(firstPersonThrowSample(throwProgress,'Left').offset,limbLength('Left')*.45);
+        }
         const rotations = { ...gripRotation };
         if (pose === 'pistol') {
             rotations.Left = handBasis([0, -1, 0], [0, 0, -1], [1, 0, 0]);
@@ -272,7 +279,7 @@ export class SwatRig {
                 const shoulder = side === 'Left' ? new THREE.Vector3(-0.28, -0.34, 0.04) : new THREE.Vector3(0.30, -0.36, 0.26);
                 const upper = this.bones[`${side}Arm`];
                 if (custom) shoulder.add(new THREE.Vector3().fromArray(custom[side].shoulder));
-                if(side==='Right'&&pose==='throw')shoulder.add(throwableMotion(throwProgress,throwMode).offset);
+                if(side==='Right'&&pose==='throw'&&!sharedThrow)shoulder.add(throwableMotion(throwProgress,throwMode).offset);
                 const world = reference.localToWorld(shoulder);
                 upper.position.copy(upper.parent.worldToLocal(world));
                 upper.updateMatrixWorld(true);
@@ -287,6 +294,7 @@ export class SwatRig {
                 ? reference.localToWorld(new THREE.Vector3(side === 'Left' ? -0.6 : 0.5, -0.6, 0.05))
                 : this.object.localToWorld(new THREE.Vector3(side === 'Left' ? 0.65 : -0.65, 1.03, 0.16));
             if (imported) pole.lerp(reference.localToWorld(imported.elbow.clone()), importedWeight);
+            if(sharedThrow&&side==='Right')pole.lerp(this.bones.RightArm.getWorldPosition(new THREE.Vector3()).addScaledVector(sharedThrow.pole.clone().applyQuaternion(reference.getWorldQuaternion(new THREE.Quaternion())),throwReach),sharedThrow.weight);
             // Throwable elbow targets participate in IK. Keep existing firearm pose behavior.
             if (custom && (pose === 'grenade' || pose === 'throw')) pole.add(new THREE.Vector3().fromArray(custom[side].elbow).applyQuaternion(reference.getWorldQuaternion(new THREE.Quaternion())));
             if(custom?.[side].elbowTarget)pole.add(new THREE.Vector3().fromArray(custom[side].elbowTarget).applyQuaternion(reference.getWorldQuaternion(new THREE.Quaternion())));
@@ -301,6 +309,10 @@ export class SwatRig {
             }
             if (custom) {
                 rotation.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...custom[side].rotation)));
+            }
+            if(sharedThrow&&side==='Right'){
+                const frame=reference.getWorldQuaternion(new THREE.Quaternion());
+                rotation.premultiply(frame.clone().multiply(sharedThrow.rotation).multiply(frame.invert()));
             }
             if(pistolContact){
                 const offset=new THREE.Vector3().fromArray(custom?.[side].position||[0,0,0]).applyQuaternion(reference.getWorldQuaternion(new THREE.Quaternion()));

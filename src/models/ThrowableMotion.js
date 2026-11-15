@@ -5,6 +5,15 @@ import {sampleMilitiaThrow} from './MilitiaGrenadeThrow.js';
 export const THROW_DURATION = .7;
 export const THROW_RELEASE = .46;
 export const PIN_DURATION = .35;
+const viewTurn=new T.Quaternion().setFromAxisAngle(new T.Vector3(0,1,0),Math.PI);
+// The body faces +Z; the first-person camera faces -Z. Reuse the same baked
+// motion and release clock, converting its axes instead of inventing a swing.
+export function firstPersonThrowSample(progress,side='Right'){
+    const sample=sampleMilitiaThrow(progress,side,THROW_RELEASE);
+    sample.offset.applyQuaternion(viewTurn);sample.pole.applyQuaternion(viewTurn);
+    sample.rotation.premultiply(viewTurn).multiply(viewTurn.clone().invert()).normalize();
+    return sample;
+}
 const smooth = t => { t=T.MathUtils.clamp(t,0,1); return t*t*(3-2*t); };
 function path(t,keys) {
     const i=Math.max(1,keys.findIndex(k=>t<=k[0]));
