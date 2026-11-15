@@ -61,12 +61,13 @@ export function advanceGrenade(p,delta,{colliders,room,onBounce=()=>{},preview=f
  }
 }
 
-export function predictGrenade(launch,seconds,environment){
+export function predictGrenade(launch,seconds,environment,{firstContactOnly=false}={}){
  const state={position:launch.position.clone(),velocity:launch.velocity.clone(),resting:false},points=[state.position.clone()];
  let firstImpact=null,lastNormal=new T.Vector3(0,1,0);
  const steps=Math.max(0,Math.floor(seconds/GRENADE_STEP));
  for(let i=0;i<steps&&!state.resting;i++){
-  advanceGrenade(state,GRENADE_STEP,{...environment,preview:true,onImpact:(position,normal)=>{lastNormal.copy(normal);firstImpact??={position:position.clone(),normal:normal.clone()};points.push(position.clone());}});
+  advanceGrenade(state,GRENADE_STEP,{...environment,preview:true,onImpact:(position,normal)=>{if(firstContactOnly&&firstImpact)return;lastNormal.copy(normal);firstImpact??={position:position.clone(),normal:normal.clone()};points.push(position.clone());}});
+  if(firstContactOnly&&firstImpact)return{points,position:firstImpact.position,normal:firstImpact.normal,firstImpact,resting:false};
   if(i%4===3)points.push(state.position.clone());
  }
  points.push(state.position.clone());

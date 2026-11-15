@@ -5,10 +5,11 @@ throw; hold Alt to preview a slower blue low toss. Right-click pulls the pin.
 Left-click throws (Alt + left-click for a low toss); right-click while armed
 retains its existing immediate low-toss control.
 
-The red ring marks the predicted endpoint after bounces. The smaller amber ring
-marks the first contact when it is separated from that endpoint. Distance and
+The arc stops at the first surface hit, and the single red ring marks that first
+drop. No bounce path or later resting position is drawn. Actual grenades retain
+their normal bounces after landing. Distance and
 throw mode appear in the weapon panel. `AIRBURST` means the fuse is predicted to
-expire before the grenade rests. The estimate includes cooking time, the pin-pull
+expire before the first contact. The estimate includes cooking time, the pin-pull
 wait and the animation's release delay. It updates at most 30 times per second.
 Walls occlude the guide: it is not an X-ray view of covered rooms.
 
@@ -29,7 +30,7 @@ firearm poses and the existing imported third-person throw are retained.
 Verification: `tests/grenade-aim.test.js` compares flight across 30/60/144 Hz,
 wall/floor bounces, cooked endpoints, glass, support removal and buffer reuse.
 `node scripts/check-grenade-guide.mjs` captures high/low/cooked views and compares
-a real stationary throw's detonation against the preview. The local Villa/stair
+a real stationary throw's first contact against the preview. The local Villa/stair
 check matched the endpoint and recorded about 0.2 ms mean prediction time on the
 test PC. This is not a guarantee for every device or aim position. Moving during
 the release animation, network corrections, or geometry changing during flight

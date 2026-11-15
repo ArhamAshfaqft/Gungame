@@ -13,7 +13,6 @@ export class GrenadeAimGuide extends T.Group{
   this.arc.frustumCulled=false;this.arc.raycast=()=>{};this.add(this.arc);
   const markerMaterial=new T.MeshBasicMaterial({color:0xff6548,transparent:true,opacity:.95,depthWrite:false,side:T.DoubleSide,toneMapped:false});
   this.marker=new T.Group();this.marker.add(new T.Mesh(new T.RingGeometry(.23,.31,32),markerMaterial),new T.Mesh(new T.CircleGeometry(.09,16),markerMaterial));this.add(this.marker);
-  this.contact=new T.Mesh(new T.RingGeometry(.07,.1,16),new T.MeshBasicMaterial({color:0xffcf73,side:T.DoubleSide,depthWrite:false,toneMapped:false}));this.add(this.contact);
   this.traverse(o=>{o.userData.ssao=false;o.renderOrder=4;o.raycast=()=>{};});this.outline.renderOrder=3;
  }
  update(prediction,mode,camera){
@@ -26,9 +25,7 @@ export class GrenadeAimGuide extends T.Group{
   // enough to clear their risers while keeping ordinary world occlusion.
   const place=(object,position,normal)=>{object.position.copy(position).addScaledVector(normal,.15);object.quaternion.setFromUnitVectors(new T.Vector3(0,0,1),normal);};
   this.marker.visible=true;
-  if(prediction.resting)place(this.marker,prediction.position,prediction.normal);
+  if(prediction.firstImpact||prediction.resting)place(this.marker,prediction.position,prediction.normal);
   else{this.marker.position.copy(prediction.position);this.marker.quaternion.copy(camera.getWorldQuaternion(new T.Quaternion()));}
-  this.contact.visible=!!prediction.firstImpact&&prediction.firstImpact.position.distanceTo(prediction.position)>.4;
-  if(prediction.firstImpact)place(this.contact,prediction.firstImpact.position,prediction.firstImpact.normal);
  }
 }

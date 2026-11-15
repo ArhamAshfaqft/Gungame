@@ -6,6 +6,15 @@ import {GrenadeAimGuide} from '../src/weapons/GrenadeAimGuide.js';
 const v=(x=0,y=0,z=0)=>new T.Vector3(x,y,z);
 const state=launch=>({position:launch.position.clone(),velocity:launch.velocity.clone(),resting:false});
 
+test('first-contact guide ends at the first drop and contains no bounce continuation',()=>{
+ const launch={position:v(0,1.65,0),velocity:v(0,2.2,-11)},environment={colliders:[]};
+ const guide=predictGrenade(launch,5,environment,{firstContactOnly:true}),full=predictGrenade(launch,5,environment);
+ assert.ok(guide.firstImpact);assert.ok(guide.position.equals(guide.firstImpact.position));assert.ok(guide.points.at(-1).equals(guide.position));
+ assert.ok(guide.points.length<full.points.length);assert.ok(guide.position.distanceTo(full.position)>1,'actual bounces continue beyond the guide endpoint');
+ const p=state(launch);let first;for(let i=0;i<600&&!first;i++)advanceGrenade(p,GRENADE_STEP,{colliders:[],onImpact:position=>{first??=position.clone();}});
+ assert.ok(first.distanceTo(guide.position)<1e-9);
+});
+
 test('aim prediction matches actual fixed-step flight across render rates, wall bounces and raised floors',()=>{
  const floor=new T.Box3(v(-10,2,-20),v(10,2.2,5)),wall=new T.Box3(v(-10,0,-4),v(10,8,-3.8));
  for(const colliders of [[],[wall],[floor,wall]])for(const velocity of [v(0,2.2,-11),v(0,.5,-4.5),v(2,8,-10)]){

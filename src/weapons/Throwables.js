@@ -126,10 +126,10 @@ export class Throwables {
         if(this.aimInfo&&this.aimClock<1/30&&this.aimInfo.mode===mode)return;this.aimClock=0;
         const launch=this.launchParameters(mode),wait=Math.max(0,PIN_DURATION-(this.held.armed?this.held.pinAge:0))+THROW_DURATION*THROW_RELEASE;
         const flight=Math.max(0,(this.fuseRemaining??6)-wait),start=performance.now();
-        const prediction=predictGrenade(launch,flight,{colliders:this.colliders,room:this.room});
+        const prediction=predictGrenade(launch,flight,{colliders:this.colliders,room:this.room},{firstContactOnly:true});
         this.aimPredictMs=performance.now()-start;
         this.trajectory.update(prediction,mode,this.camera);
-        this.aimInfo={mode,distance:Math.hypot(prediction.position.x-launch.position.x,prediction.position.z-launch.position.z),airburst:!prediction.resting,flight};
+        this.aimInfo={mode,distance:Math.hypot(prediction.position.x-launch.position.x,prediction.position.z-launch.position.z),airburst:!prediction.firstImpact,flight};
     }
 
     spawn(type, position, velocity) {
