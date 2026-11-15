@@ -17,7 +17,7 @@ export class WorldPresentation{
    motion.time=Math.min(motion.duration,motion.time+Math.max(0,delta));const t=motion.time/motion.duration;
    object.position.lerpVectors(motion.from.position,motion.to.position,t);
    object.quaternion.slerpQuaternions(motion.from.quaternion,motion.to.quaternion,t);
-   object.scale.lerpVectors(motion.from.scale,motion.to.scale,t);object.updateMatrixWorld(true);
+   object.scale.lerpVectors(motion.from.scale,motion.to.scale,t);object.updateMatrixWorld(true);motion.mesh.userData.motionBatch?.syncTree(motion.mesh);
    dirtyShadowRegion(this.shadows,motion.mesh);
    if(t===1)this.motions.delete(object);
   }

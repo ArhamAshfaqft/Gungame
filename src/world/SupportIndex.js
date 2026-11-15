@@ -7,14 +7,27 @@ export function supportCandidates(map,point){
  let entry=indexes.get(colliders);
  // The map and all damage-particle pools query the same collision world.
  // Share its index instead of rebuilding it independently after each motion.
- if(!entry||entry.revision!==revision||entry.count!==colliders.length){
-  const grid=new Map();
+ const staticRevision=colliders.staticSupportRevision||0;
+ if(!entry||entry.staticRevision!==staticRevision||entry.count!==colliders.length||entry.revision!==revision&&colliders.some(box=>!entry.ranges.has(box))){
+  const grid=new Map(),ranges=new Map();
   for(const box of colliders){
+   ranges.set(box,[Math.floor(box.min.x/2),Math.floor(box.max.x/2),Math.floor(box.min.z/2),Math.floor(box.max.z/2)]);
    for(let x=Math.floor(box.min.x/2);x<=Math.floor(box.max.x/2);x++)for(let z=Math.floor(box.min.z/2);z<=Math.floor(box.max.z/2);z++){
     const key=`${x},${z}`;if(!grid.has(key))grid.set(key,[]);grid.get(key).push(box);
    }
   }
-  entry={grid,revision,count:colliders.length};indexes.set(colliders,entry);
+  entry={grid,ranges,staticRevision,revision,count:colliders.length};indexes.set(colliders,entry);
+ }else if(entry.revision!==revision){
+  // Most rubble motion stays inside its existing buckets. Only move changed
+  // dynamic bounds between cells; retain the intact building's shared index.
+  for(const box of colliders){
+   const old=entry.ranges.get(box),x0=Math.floor(box.min.x/2),x1=Math.floor(box.max.x/2),z0=Math.floor(box.min.z/2),z1=Math.floor(box.max.z/2);
+   if(old[0]===x0&&old[1]===x1&&old[2]===z0&&old[3]===z1)continue;
+   for(let x=old[0];x<=old[1];x++)for(let z=old[2];z<=old[3];z++){const key=`${x},${z}`,bucket=entry.grid.get(key),i=bucket.indexOf(box);if(i>=0)bucket.splice(i,1);if(!bucket.length)entry.grid.delete(key);}
+   for(let x=x0;x<=x1;x++)for(let z=z0;z<=z1;z++){const key=`${x},${z}`;if(!entry.grid.has(key))entry.grid.set(key,[]);entry.grid.get(key).push(box);}
+   old[0]=x0;old[1]=x1;old[2]=z0;old[3]=z1;
+  }
+  entry.revision=revision;
  }
  map.supportIndex=entry.grid;map.supportIndexRevision=revision;map.supportIndexCount=entry.count;
  return entry.grid.get(`${Math.floor(point.x/2)},${Math.floor(point.z/2)}`)||[];

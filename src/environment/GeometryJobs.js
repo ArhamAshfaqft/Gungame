@@ -29,7 +29,7 @@ export function computeOperation(data){
 export function applyOperation(op,result){
  const {mesh}=op;if(!mesh.visible||op.entry?.removed)return false;
  if(op.entry){
-  const entry=op.entry,motion=entry.decal.userData.motionBatch;motion?.detach(entry.decal);entry.decal.geometry.dispose();entry.decal.geometry=unpackGeometry(result.geometry);entry.decal.position.set(0,0,0);entry.decal.quaternion.identity();entry.decal.scale.set(1,1,1);mesh.add(entry.decal);entry.revision=surfaceRevision(mesh);entry.sourceIndex=mesh.geometry.index;entry.sourcePositions=mesh.geometry.attributes.position;if(result.value&&motion)motion.add(entry.decal);return result.value;
+  const entry=op.entry,motion=entry.decal.userData.motionBatch||mesh.userData.motionBatch;entry.decal.userData.motionBatch?.detach(entry.decal);entry.decal.geometry.dispose();entry.decal.geometry=unpackGeometry(result.geometry);entry.decal.position.set(0,0,0);entry.decal.quaternion.identity();entry.decal.scale.set(1,1,1);mesh.add(entry.decal);entry.revision=surfaceRevision(mesh);entry.sourceIndex=mesh.geometry.index;entry.sourcePositions=mesh.geometry.attributes.position;if(result.value&&motion)motion.add(entry.decal);return result.value;
  }
  if(result.geometry){mesh.userData.renderBatch?.detach(mesh);mesh.userData.motionBatch?.detach(mesh);mesh.geometry.dispose();mesh.geometry=unpackGeometry(result.geometry);}
  Object.assign(mesh.userData,unpackState(result.state));mesh.visible=result.visible;if(result.isShootable!==undefined)mesh.userData.isShootable=result.isShootable;

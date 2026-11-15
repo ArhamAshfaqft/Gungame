@@ -47,7 +47,7 @@ export class WorldSync{
    structural ||= !!(entry.geometry||entry.create||entry.lights||entry.visible!==m.visible);
    if(entry.lights&&m.userData.breakableLight)entry.lights.forEach((intensity,i)=>{if(m.userData.breakableLight.lights[i])m.userData.breakableLight.lights[i].intensity=intensity;});
    if(entry.trainingDoor&&this.room.doorMesh){Object.assign(this.room.door,{open:entry.trainingDoor.open,openAmount:entry.trainingDoor.openAmount,destroyed:entry.trainingDoor.destroyed});const hinge=new T.Matrix4().fromArray(entry.trainingDoor.hinge);hinge.decompose(this.room.doorHinge.position,this.room.doorHinge.quaternion,this.room.doorHinge.scale);this.room.doorHinge.updateMatrixWorld(true);}
-   m.userData.renderBatch?.detach(m);m.userData.motionBatch?.detach(m);panel?.renderBatch?.detach(panel);
+   m.userData.renderBatch?.detach(m);m.userData.motionBatch?.detachTree(m);panel?.renderBatch?.detach(panel);
    if(entry.panel&&panel){
     for(const id of entry.panel.broken)if(!panel.broken.has(id))panel.removePiece(panel.pieces[id],new T.Vector3(0,-1,0));
     panel.broken=new Set(entry.panel.broken);
@@ -63,6 +63,7 @@ export class WorldSync{
    for(const data of entry.boxes||[]){const b=new T.Box3(new T.Vector3().fromArray(data.min),new T.Vector3().fromArray(data.max));b.supportMesh=m;if(data.door){b.doorBounds=new T.Box3(new T.Vector3().fromArray(data.door.bounds[0]),new T.Vector3().fromArray(data.door.bounds[1]));b.doorGroup=new T.Group();b.doorGroup.matrixAutoUpdate=false;b.doorGroup.matrix.fromArray(data.door.matrix);b.doorGroup.matrix.decompose(b.doorGroup.position,b.doorGroup.quaternion,b.doorGroup.scale);b.doorGroup.updateMatrixWorld(true);}boxes.push(b);}
    if(panel?.handle&&(!m.visible||panel.destroyed))panel.handle.visible=false;
    if(smooth)this.presentation.retarget(object,m,from);
+   if(m.visible&&!panel&&!entry.trainingDoor)this.map.environment?.motionBatch.addTree(m);
   }
   if(entries.length){invalidateSupport(this.map.colliders);if(structural||!interpolate){this.map.shadowsDirty=true;this.room.shadowsDirty=true;}if(structural)this.map.debris?.wake();}
  }

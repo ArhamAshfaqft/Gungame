@@ -66,7 +66,16 @@ export class SurfaceDamage{
   if(map?.debris)map.debris.spawn(centre,velocity,shape,spin,14,new THREE.Color(0x8a5a34));
   else this.pools.wood.spawn(centre,velocity,shape,spin,10);
  }
- *hitSteps(hit,slot,direction,{panel=false,distance=hit.distance||0,damage,energy,blast=false,blastOrigin=null}={},deferred=false){
+ *hitSteps(hit,slot,direction,options={},deferred=false){
+  try{return yield* this.applyHitSteps(hit,slot,direction,options,deferred);}
+  finally{
+   // Chipped, stationary furniture used to leave its shared render batch for
+   // good. Reuse the same material batches for damaged survivors and marks too.
+   const mesh=hit.object,environment=environmentOf(mesh);
+   if(environment&&mesh.visible&&!mesh.userData.breakable)environment.motionBatch.addTree(mesh);
+  }
+ }
+ *applyHitSteps(hit,slot,direction,{panel=false,distance=hit.distance||0,damage,energy,blast=false,blastOrigin=null}={},deferred=false){
   const mesh=hit.object;if(!mesh?.isMesh)return;if(!mesh.visible)return{penetrates:true,damageMultiplier:1,remainingEnergy:energy??projectileEnergy(slot,distance)};if(!deferred){mesh.userData.renderBatch?.detach(mesh);mesh.userData.motionBatch?.detach(mesh);}
   if(mesh.userData.waterBody){mesh.userData.waterBody.impact(hit.point,damage??(WEAPONS[slot]?.bodyDamage||34));return{penetrates:true,damageMultiplier:.82,remainingEnergy:(energy??projectileEnergy(slot,distance))*.82};}
   if(mesh.userData.waterSystem){mesh.userData.waterSystem.splash(hit.point,damage??34);return{penetrates:true,damageMultiplier:.98,remainingEnergy:(energy??projectileEnergy(slot,distance))*.98};}

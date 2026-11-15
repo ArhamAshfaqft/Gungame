@@ -1,5 +1,6 @@
 import * as T from 'three';
-import {World,Body,Vec3,Quaternion,SAPBroadphase,LockConstraint,HingeConstraint,Material,ContactMaterial} from 'cannon-es';
+import {World,Body,Vec3,Quaternion,ObjectCollisionMatrix,LockConstraint,HingeConstraint,Material,ContactMaterial} from 'cannon-es';
+import {EnvironmentBroadphase} from './EnvironmentBroadphase.js';
 import {physicalMaterial} from '../world/PhysicalMaterials.js';
 import {invalidateSupport,supportCandidates} from '../world/SupportIndex.js';
 import {syncDamagedCollision,removeProp} from '../world/MaterialProps.js';
@@ -22,7 +23,10 @@ export class EnvironmentSystem{
   this.map=map;this.scene=map.scene;this.colliders=map.colliders;this.maxAwake=maxAwake;
   this.records=[];this.byObject=new WeakMap();this.partRecords=new WeakMap();this.staticBodies=new Map();this.pending=new Set();this.breakQueue=new Set();
   this.motionBatch=new MotionBatch(this.scene);
-  this.world=new World({gravity:new Vec3(0,-9.81,0),allowSleep:true});this.world.broadphase=new SAPBroadphase(this.world);this.world.solver.iterations=20;
+  this.world=new World({gravity:new Vec3(0,-9.81,0),allowSleep:true});this.world.broadphase=new EnvironmentBroadphase(this.world);this.world.solver.iterations=20;
+  // Store actual contacts, rather than clearing an N-squared array every step.
+  // Stable body IDs also survive removal/reindexing of nearby static supports.
+  this.world.collisionMatrix=new ObjectCollisionMatrix();this.world.collisionMatrixPrevious=new ObjectCollisionMatrix();
   this.world.broadphase.useBoundingBoxes=true;
   installShapeCulling(this.world.narrowphase);
   this.world.narrowphase.enableFrictionReduction=true;
@@ -159,7 +163,7 @@ export class EnvironmentSystem{
   body.addEventListener('collide',event=>{if(r.joint&&Math.abs(event.contact.getImpactVelocityAlongNormal())>1)r.joint.bodyA.wakeUp();});
   this.staticRevision=-1;
   this.supportDirty=true;this.scanAgain=true;
-  for(const p of r.parts){p.userData.dynamicEnvironment=true;for(const box of p.userData.damageColliders||[p.userData.collider])if(box)box.dynamicEnvironment=true;if(r.loose)this.motionBatch.addTree(p);}
+  for(const p of r.parts){p.userData.dynamicEnvironment=true;for(const box of p.userData.damageColliders||[p.userData.collider])if(box)box.dynamicEnvironment=true;this.motionBatch.addTree(p);}
  }
  activate(r,impulse=null,point=null){
   if(!r||r.anchored||!r.parts.some(m=>m.visible))return;
@@ -315,7 +319,12 @@ export class EnvironmentSystem{
   const awake=this.records.some(r=>r.body&&r.body.sleepState!==Body.SLEEPING);
   if(!awake){this.batchResting(dt);return;}
   if(this.staticClock>.1||this.staticRevision!==staticRevision){this.staticClock=0;this.syncStatic();this.staticRevision=staticRevision;}
-  this.accumulator=Math.min(.08,this.accumulator+dt);while(this.accumulator>=1/60){for(const r of this.records)if(r.body&&r.buoyancy>0)r.body.applyForce(new Vec3(0,r.buoyancy,0));this.world.step(1/60);this.accumulator-=1/60;}
+  // Bound catch-up work. Five steps after one late frame used to cause another
+  // late frame, especially on slower CPUs. Two fixed steps cover normal 30 Hz
+  // host ticks; under overload discard old time instead of growing a backlog.
+  this.accumulator+=Math.min(.08,dt);let steps=0;
+  while(this.accumulator>=1/60&&steps<2){for(const r of this.records)if(r.body&&r.buoyancy>0)r.body.applyForce(new Vec3(0,r.buoyancy,0));this.world.step(1/60);this.accumulator-=1/60;steps++;}
+  if(this.accumulator>=1/60)this.accumulator%=1/60;
   this.settleIslands(dt);
   for(const r of this.breakQueue){if(!r.body)continue;const point=new T.Vector3(r.body.position.x,r.body.position.y,r.body.position.z);removeProp(r.object,this.colliders);this.map.surfaceDamage?.emit('glass',point,new T.Vector3(0,1,0),12,.02);this.discardBody(r);r.signature=this.signature(r);}this.breakQueue.clear();
   let changed=false;

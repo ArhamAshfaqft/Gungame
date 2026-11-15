@@ -3,7 +3,7 @@ import {DecalGeometry} from 'three/examples/jsm/geometries/DecalGeometry.js';
 import {decalSource} from './DecalSource.js';
 export const surfaceRevision=mesh=>`${mesh.geometry.uuid}:${mesh.geometry.attributes.position.version}:${mesh.geometry.index?.version??0}`;
 export function projectSurfaceMark(entry){
- const {mesh,decal}=entry,motion=decal.userData.motionBatch;motion?.detach(decal);mesh.updateWorldMatrix(true,false);
+ const {mesh,decal}=entry,motion=decal.userData.motionBatch||mesh.userData.motionBatch;decal.userData.motionBatch?.detach(decal);mesh.updateWorldMatrix(true,false);
  const point=mesh.localToWorld(entry.local.clone()),rotation=mesh.getWorldQuaternion(new THREE.Quaternion()).multiply(entry.rotation);
  const source=decalSource(mesh,point,rotation,entry.size);
  const geometry=new DecalGeometry(source,point,new THREE.Euler().setFromQuaternion(rotation),entry.size);
@@ -26,5 +26,5 @@ export function projectFloorMark(entry){
  if(!projectSurfaceMark(entry))return false;
  const geo=entry.decal.geometry,n=geo.attributes.normal,indices=[],matrix=new THREE.Matrix3().getNormalMatrix(entry.mesh.matrixWorld),normal=new THREE.Vector3();
  for(let i=0;i<n.count;i+=3){normal.fromBufferAttribute(n,i).applyMatrix3(matrix).normalize();if(normal.y>.9)indices.push(i,i+1,i+2);}
- geo.setIndex(indices);return indices.length>0;
+ geo.setIndex(indices);entry.decal.userData.motionBatch?.sync(entry.decal);return indices.length>0;
 }
