@@ -9,11 +9,16 @@ test does not establish connectivity between different internet providers.
 The client now requests expiring ICE credentials from `POST /api/ice-servers`.
 Cloudflare Pages Functions keeps the master key out of the browser and repository.
 Only that API path invokes a Function; the game/assets retain static hosting.
-Without configured secrets, direct networking stays available and a failed join
-explicitly identifies the missing/unavailable relay. More STUN servers alone do
-not replace a relay for networks that cannot connect directly.
+Without configured secrets, direct networking stays available. A failed join is
+not proof that a relay is necessary: a new direct attempt can succeed. More STUN
+servers alone do not replace a relay for networks that cannot connect directly.
 
-## Account setup still required
+## Optional Cloudflare relay setup (not activated)
+
+The user requires zero hosting cost. Do not activate a service with paid overages
+as part of the direct-connection fixes. The following setup is optional and needs
+an explicit decision to accept potential charges; it is not required for direct
+connections that already work between the host and guest.
 
 1. In the Cloudflare account, open **Realtime → TURN** and create a TURN key for
    this game. Review the service's billing terms before activating it.
@@ -46,3 +51,23 @@ Sources:
 `tests/browser-relay.test.js` validates the key exchange, safe failures, fallback,
 origin checks and specific errors. Mock credentials verify the integration
 contract; they do not prove the TURN service is provisioned or reachable.
+
+## Intermittent direct joins and room lifecycle
+
+The user reported that recreating a room allowed the same PCs on different
+connections to join. This demonstrates that a failed attempt alone does not
+establish that their network combination always needs a paid relay.
+
+Code inspection also found that PeerJS's signaling `open` event could start a
+second worker and install duplicate incoming-connection handlers after broker
+reconnection. The host now retains one worker and one handler across reconnects.
+Temporary broker network errors preserve an established match. A failed initial
+guest connection retries once using a fresh peer against the same room; explicit
+password/map/full-room rejections do not retry. Incomplete guest handshakes expire
+after 20 seconds and release their slots, with timers/listeners cleaned up.
+
+`tests/browser-room-lifecycle.test.js` covers these failure paths.
+`node scripts/check-browser-reconnect.mjs` exercises actual PeerJS/WebRTC with an
+intentionally closed first attempt, broker disconnect/reconnect, and guest rejoin
+without replacing the host worker. This remains a local two-profile test, not a
+guarantee for every internet provider/router combination.

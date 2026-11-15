@@ -17,7 +17,7 @@ export async function loadIceConfig(fetcher=fetch){
 
 export function joinTimeoutMessage({relayAvailable,opened=false,iceState=''}){
  if(opened)return 'The host connection opened, but the room did not respond. Keep the host tab active and try a new room.';
- if(!relayAvailable)return 'Could not reach the host over the internet. The game relay is not configured or unavailable; some different-network connections cannot join until it is enabled.';
+ if(!relayAvailable)return 'The direct connection timed out. Keep the host tab active, check the room code, and try a new room. Your networks may be blocking a direct connection.';
  if(iceState==='failed')return 'The network connection to the host failed, including the relay. Keep the host tab open and try again.';
  return 'Timed out connecting to the host. Keep the host tab open, check the room code, and try again.';
 }

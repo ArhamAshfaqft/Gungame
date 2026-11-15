@@ -38,7 +38,7 @@ test('browser loads short-lived relay configuration; static and failing endpoint
 });
 
 test('join failures distinguish missing relay from an open but unresponsive host',()=>{
- assert.match(joinTimeoutMessage({relayAvailable:false}),/relay is not configured or unavailable/);
+ assert.match(joinTimeoutMessage({relayAvailable:false}),/direct connection timed out/);
  assert.match(joinTimeoutMessage({relayAvailable:false,opened:true}),/connection opened/);
  assert.match(joinTimeoutMessage({relayAvailable:true,iceState:'failed'}),/including the relay/);
  assert.doesNotMatch(joinTimeoutMessage({relayAvailable:true}),/not configured/);
