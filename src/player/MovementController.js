@@ -607,7 +607,10 @@ export class MovementController {
             return grounded;
         }
         if(box.stairRail){const r=box.stairRail,surface=r.base+r.rise*(.5-(this.position.z-r.z)/r.length);if(this.position.y<surface-.02||this.position.y-this.currentHeight>surface+1.1)return false;}
-        allowStep=allowStep&&!box.noStep&&!box.stairGuard&&!box.supportMesh?.userData.breakable?.isDoor;
+        const panel=box.supportMesh?.userData.breakable;
+        // Hinged leaves must never lift the player. Once detached, low door
+        // remnants use the same step clearance as other fallen objects.
+        allowStep=allowStep&&!box.noStep&&!box.stairGuard&&!(panel?.isDoor&&!panel.detachedEnvironment);
         // Player cylinder/AABB radius = 0.45
         const r = 0.45;
         const p = this.position;

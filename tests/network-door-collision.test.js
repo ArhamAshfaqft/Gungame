@@ -42,3 +42,18 @@ test('parented door collision uses world height and rotation instead of local fi
  p.resolveBoxCollision(box,7.4);assert.ok(Math.abs(p.position.y-7.4-p.currentHeight)<1e-7);
  assert.ok(Math.abs(p.velocity.clone().applyQuaternion(rotation.invert()).z)<1e-7);
 });
+
+
+test('low fallen door remnants can be stepped over without disabling tall debris collision',()=>{
+ for(const floor of [0,3.4,6.8])for(const height of [1.65,1.05])for(const detached of [false,true]){
+  const p=new MovementController(new T.PerspectiveCamera(),null,{input:false});p.currentHeight=height;p.position.set(0,floor+height,0);p.velocity.set(0,-.01,-2);p.isGrounded=true;
+  const box=new T.Box3(new T.Vector3(-.6,floor,-.4),new T.Vector3(.6,floor+.12,.4));
+  box.supportMesh={userData:{breakable:{isDoor:true,detachedEnvironment:detached}}};
+  p.resolveBoxCollision(box,floor);
+  if(detached){assert.ok(Math.abs(p.position.y-floor-height-.12)<1e-7);assert.equal(p.position.z,0,'step over the fallen leaf instead of being pushed out');}
+  else{assert.equal(p.position.y,floor+height);assert.ok(Math.abs(p.position.z)>=.849,'attached door remnants stay blocking');}
+ }
+ const p=new MovementController(new T.PerspectiveCamera(),null,{input:false});p.position.set(0,1.65,0);p.isGrounded=true;
+ const tall=new T.Box3(new T.Vector3(-.6,0,-.4),new T.Vector3(.6,.9,.4));tall.supportMesh={userData:{breakable:{isDoor:true,detachedEnvironment:true}}};
+ p.resolveBoxCollision(tall,0);assert.equal(p.position.y,1.65);assert.ok(Math.abs(p.position.z)>=.849,'large upright remnants cannot be climbed as a low step');
+});
