@@ -176,3 +176,61 @@ breached door, timber finish over concrete, a three-layer floor breach, immediat
 chair collapse and three concurrent blasts. All these checks must pass alongside
 the physics and geometry tests. Rendering measurements use headless Chromium with
 software graphics and are evidence of removed stalls, not a universal FPS guarantee.
+
+## Destruction scaling (2026-11-15)
+
+The destruction path is shared by single-player and the authoritative match
+simulation. Low graphics settings alone cannot reduce its CPU work.
+
+The November 15 pass removes quadratic contact-table clearing using Cannon's
+ID-based sparse contact matrix, sweeps on the same AABBs that are sorted, and
+updates only changed support buckets during debris motion. Collision shapes,
+solver iterations, physical damage and persistent rubble remain available.
+
+Debris simulation runs at fixed 60 Hz with at most two catch-up steps per update.
+This covers a normal 30 Hz host tick. Under sustained overload, old debris time
+is discarded rather than accumulating five physics steps behind every late
+frame. Debris can therefore advance slower than real time below 30 updates/sec;
+player movement, grenade fuses and match time use their existing clocks.
+
+Damaged furniture and bullet marks return to shared material batches. Moving
+assemblies use those batches too, including interpolated multiplayer replicas.
+Source geometry still handles ray hits and collision; removed objects and their
+attached marks leave the GPU batch.
+
+### Reproducing the stress check
+
+Start Vite on port 5194, then run:
+
+```powershell
+node scripts/profile-destruction-stress.mjs artifacts/destruction-stress.json
+```
+
+Optional environment variables: `PROFILE_URL` selects a different Vite checkout,
+`PROFILE_CPU=4` applies Chrome's artificial CPU slowdown, and `PROFILE_ROUNDS=2`
+runs eight blasts instead of four. Each round hits the library, kitchen, study
+and dining room, followed by settling and recovery measurements. A fixed
+observer prevents falling or death from changing the measured camera. The
+script writes JSON, a CPU profile and a screenshot, and fails on browser or
+destruction-pipeline errors. Phase timings overlap and must not be summed.
+
+Observed with headless Chrome 157, RTX 3070 / D3D11, 1280x720, Low, uncapped:
+
+| Check | Previous version | Updated version |
+| --- | ---: | ---: |
+| Mean physics step, first library blast | 2.26 ms | 1.29 ms |
+| Mean physics step, study blast | 3.55 ms | 2.35 ms |
+| Draw calls after settling | 270 | 217 after eight blasts |
+| Four-blast mean frame time, CPU slowdown 4 | 115.19 ms | 78.97 ms |
+
+The final eight-blast run had no browser/pipeline errors, no pending physics or
+geometry jobs after settling, and no awake bodies at recovery. The artificial
+slow-CPU test still runs slowly: these are measured reductions, not a guarantee
+of 60 FPS on an i7-4770, a particular RX card, or every resolution/room. The
+friend's roughly 50 FPS before damage has not been reproduced on that PC.
+
+`tests/destruction-scaling.test.js` checks AABB pairs against a naive reference,
+contact trajectories/events, moving/replaced support bounds, actual damage and
+ray hits in material batches, multiplayer interpolation/removal, and bounded
+catch-up work. Existing recovery tests retain falling books, cut geometry and
+sleep/wake behavior.
