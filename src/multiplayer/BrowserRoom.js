@@ -1,5 +1,6 @@
 import {Peer} from 'peerjs';
 import {PROTOCOL} from './Protocol.js';
+import {loadIceConfig,joinTimeoutMessage} from './IceConfig.js';
 const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const roomCode=()=>Array.from(crypto.getRandomValues(new Uint8Array(7)),n=>alphabet[n%alphabet.length]).join('');
 export function browserInvite(code,map){const url=new URL(location.href);url.searchParams.set('multiplayer','1');url.searchParams.set('transport','browser');url.searchParams.set('room',code);url.searchParams.set('map',map);url.searchParams.delete('server');return url.href;}
@@ -11,15 +12,16 @@ class BrowserRoom{
  onLeave(fn){this.leaves.push(fn);}
 }
 export async function connectBrowserRoom(code,options){
- const hosting=!code;code=code||roomCode();const id=crypto.randomUUID(),room=new BrowserRoom(id,code),peer=new Peer(hosting?`fast-snipe-v${PROTOCOL}-${code}`:undefined,{debug:0});
+ const hosting=!code;code=code||roomCode();const ice=await loadIceConfig(),id=crypto.randomUUID(),room=new BrowserRoom(id,code),peer=new Peer(hosting?`fast-snipe-v${PROTOCOL}-${code}`:undefined,{debug:0,config:ice.config});
+ room.relayAvailable=ice.relayAvailable;room.connectionInfo={opened:false,iceState:''};
  let worker,connection,settled=false,closed=false;const guests=new Map();
  const close=()=>{if(closed)return;closed=true;clearTimeout(timeout);worker?.terminate();peer.destroy();for(const fn of room.leaves)fn();};
  room.leave=close;
  let accept,reject;const result=new Promise((resolve,fail)=>{accept=resolve;reject=fail;});
  const fail=message=>{if(!settled){settled=true;reject(Error(message));close();}else{for(const fn of room.errors)fn(4000,message);close();}};
- const timeout=setTimeout(()=>fail('Could not connect. Check the room code and keep the host tab open. Your network may require a WebRTC relay.'),30000);
+ const timeout=setTimeout(()=>fail(hosting?'Could not start the browser host. Please refresh and try again.':joinTimeoutMessage({...room.connectionInfo,relayAvailable:ice.relayAvailable})),30000);
  const deliver=(type,data)=>{if(type==='accepted'){if(!settled){settled=true;clearTimeout(timeout);accept(room);}return;}if(type==='rejected'){fail(data);return;}room.deliver(type,data);};
- peer.on('error',error=>fail(error.type==='unavailable-id'?'Room code in use. Try creating again.':error.message));
+ peer.on('error',error=>fail(error.type==='unavailable-id'?'Room code in use. Try creating again.':error.type==='peer-unavailable'?'This room is not online. Check the room code and keep the host tab open.':error.message));
  peer.on('disconnected',()=>{if(!closed)peer.reconnect();});
  peer.on('open',()=>{
   if(hosting){
@@ -38,7 +40,8 @@ export async function connectBrowserRoom(code,options){
   }else{
    connection=peer.connect(`fast-snipe-v${PROTOCOL}-${code}`,{reliable:true,serialization:'binary'});
    room.send=(type,data)=>connection.send({type,data});
-   connection.on('open',()=>connection.send({type:'hello',data:{...options,protocol:PROTOCOL}}));
+   connection.on('iceStateChanged',state=>{room.connectionInfo.iceState=state;});
+   connection.on('open',()=>{room.connectionInfo.opened=true;connection.send({type:'hello',data:{...options,protocol:PROTOCOL}});});
    connection.on('data',message=>{if(message?.type==='identity'){room.sessionId=message.data;return;}if(message?.type)deliver(message.type,message.data);});
    connection.on('close',()=>fail('The host disconnected. Ask your friend to create a new room.'));
    connection.on('error',error=>fail(error.message));

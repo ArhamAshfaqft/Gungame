@@ -3,6 +3,7 @@
 #multiplayer-menu h2{font-size:20px;letter-spacing:2px;margin:0 0 10px;color:#f2c466}
 #multiplayer-menu p{font:13px/1.6 Arial,sans-serif;color:#aebdca;margin:10px 0}
 #multiplayer-menu label{display:flex;flex-direction:column;gap:6px;font:12px Arial,sans-serif;color:#c2cdd7;margin:10px 0}
+#multiplayer-menu [hidden]{display:none!important}
 #multiplayer-menu input{width:100%;box-sizing:border-box;background:#0a1018;border:1px solid #465460;color:white;border-radius:4px;padding:10px;font:15px Arial,sans-serif}
 .mp-fields,.mp-actions{display:flex;gap:12px}.mp-fields label{flex:1;min-width:0}
 #multiplayer-menu button{border:1px solid #a58645;color:#ffd67b;background:#28303a;border-radius:4px;padding:11px 14px;font-weight:bold;cursor:pointer}.mp-actions button{flex:1}

@@ -2,9 +2,10 @@ import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
 const browser=await chromium.launch({channel:'chrome',headless:true}),errors=[];
 const map=process.argv.includes('--villa')?'villa':'training';
+const base=process.env.GAME_TEST_URL||'http://127.0.0.1:5192/';
 try{
  const pages=[];
- for(let i=0;i<2;i++){const context=await browser.newContext({viewport:{width:1200,height:850}}),page=await context.newPage();pages.push(page);page.on('pageerror',e=>{errors.push(e.message);console.error('pageerror',e.stack)});await page.goto(`http://127.0.0.1:5192/?map=${map}&multiplayer=1`);await page.waitForFunction(()=>window.__fastSnipe?.networkWorld);await page.locator('#mp-name').fill(i?'Guest':'Host');await page.locator('#mp-side').selectOption(i?'blue':'red');}
+ for(let i=0;i<2;i++){const context=await browser.newContext({viewport:{width:1200,height:850}}),page=await context.newPage();pages.push(page);page.on('pageerror',e=>{errors.push(e.message);console.error('pageerror',e.stack)});await page.goto(`${base}?map=${map}&multiplayer=1`);await page.waitForFunction(()=>window.__fastSnipe?.networkWorld);await page.locator('#mp-name').fill(i?'Guest':'Host');await page.locator('#mp-side').selectOption(i?'blue':'red');}
  await pages[0].locator('#mp-create').click();await pages[0].waitForFunction(()=>window.__fastSnipe.multiplayer?.connected,null,{timeout:30000});
  const code=await pages[0].evaluate(()=>window.__fastSnipe.multiplayer.code);await pages[1].locator('#mp-code').fill(code);await pages[1].locator('#mp-join').click();await pages[1].waitForFunction(()=>window.__fastSnipe.multiplayer?.connected,null,{timeout:30000});
  for(const page of pages)await page.waitForFunction(()=>window.__fastSnipe.multiplayer?.remotes.size===1&&[...window.__fastSnipe.multiplayer.remotes.values()][0].view.rig,null,{timeout:30000});
