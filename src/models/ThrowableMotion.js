@@ -26,6 +26,9 @@ export function throwableHandTargets(progress=0,pin=0,mode='high') {
         // Approach the ring, pull it sideways, then return the spare hand.
         const reach=smooth(pin/.25)*(1-smooth((pin-.65)/.35));
         Left.lerp(new T.Vector3(.035-.12*smooth((pin-.25)/.4),.06,.035),reach);
+        // After the pin pull, extend the spare hand to guide the throw instead
+        // of dropping it out of the first-person view while the grenade cooks.
+        Left.lerp(new T.Vector3(-.24,.08,-.32),smooth((pin-.8)/.2));
     }
     return {Left,Right};
 }

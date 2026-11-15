@@ -7,6 +7,8 @@ import {DetonationEffects} from './DetonationEffects.js';
 import { createAmmoStores } from './WeaponProfiles.js';
 import {THROW_DURATION,THROW_RELEASE,PIN_DURATION,updateThrowableGrip} from '../models/ThrowableMotion.js';
 import { throwablePose } from '../studio/PoseLibrary.js';
+import {GrenadeAimGuide} from './GrenadeAimGuide.js';
+import {advanceGrenade,predictGrenade} from './GrenadeFlight.js';
 
 export const GRENADES = Object.freeze({
     frag: { name: 'FRAG', fuse: 6, radius: 6 },
@@ -30,9 +32,7 @@ export class Throwables {
         this.pending = null; this.flashRemaining = 0; this.flashPeak = 0;
         this.flashOpacity = 0; this.smokeOpacity = 0; this.playerHealth = 100; this.respawnTimer = 0;
         this.status = ''; this.statusTime = 0;
-        const trajectoryGeometry = new THREE.BufferGeometry().setFromPoints(Array.from({ length: 41 }, () => new THREE.Vector3()));
-        this.trajectory = new THREE.Line(trajectoryGeometry, new THREE.LineBasicMaterial({ color: 0xe9b85a, transparent: true, opacity: 0.65 }));
-        this.trajectory.frustumCulled = false; this.trajectory.visible = false; scene.add(this.trajectory);
+        this.trajectory = new GrenadeAimGuide();scene.add(this.trajectory);
         window.addEventListener('keydown', event => {
             if (!movement.isLocked || event.repeat || movement.isDisabled) return;
             const selected = { Digit3: 'frag', Digit4: 'flash', Digit5: 'smoke' }[event.code];
@@ -67,7 +67,7 @@ export class Throwables {
         this.weapon.triggerHeld=false;
         this.weapon.boltActive = false; this.weapon.boltDelay = 0;
         this.weapon.poseRevision = (this.weapon.poseRevision || 0) + 1;
-        this.movement.requestWeaponReady?.();
+        this.movement.requestWeaponReady?.();this.aimInfo=null;this.aimClock=1;
         this.message(`${GRENADES[type].name} IN HAND / RMB PULL PIN`);
         return true;
     }
@@ -78,7 +78,7 @@ export class Throwables {
         this.weapon.pinProgress = 0; this.weapon.throwProgress = 0;
         this.weapon.throwMode = 'high';
         this.weapon.grenadeDrawRemaining = 0;
-        this.weapon.utilityTimer = 0; this.movement.isThrowing = false; this.trajectory.visible = false;
+        this.weapon.utilityTimer = 0; this.movement.isThrowing = false; this.trajectory.visible = false;this.aimInfo=null;
         this.weapon.poseRevision = (this.weapon.poseRevision || 0) + 1;
         return true;
     }
@@ -109,6 +109,9 @@ export class Throwables {
         const direction = this.camera.getWorldDirection(new THREE.Vector3());
         const start = this.camera.position.clone();
         const desired = start.clone().addScaledVector(direction, 0.25);
+        // Release from the throwing side, so the visible arc comes from the
+        // hand instead of collapsing into a vertical line through the reticle.
+        desired.add(new THREE.Vector3(.22,-.15,0).applyQuaternion(this.camera.getWorldQuaternion(new THREE.Quaternion())));
         if (mode === 'low') desired.y -= 0.35;
         const obstruction = sweepSphere(start, desired, 0.065, this.colliders);
         if (obstruction) desired.copy(start).lerp(desired, Math.max(0, obstruction.time - 0.02));
@@ -116,26 +119,17 @@ export class Throwables {
         const velocity = direction.multiplyScalar(mode === 'low' ? 4.5 : 11).add(new THREE.Vector3(0, mode === 'low' ? 0.5 : 2.2, 0)).addScaledVector(this.movement.velocity, 0.3);
         return { position: desired, velocity };
     }
-    updateTrajectory() {
-        this.trajectory.visible = !!this.held?.armed && !this.pending;
-        if (!this.trajectory.visible) return;
-        const { position, velocity } = this.launchParameters(this.movement.keys?.walk ? 'low' : 'high');
-        const points = this.trajectory.geometry.attributes.position;
-        let count = 0;
-        for (let i = 0; i < 40; i++) {
-            points.setXYZ(count++, position.x, position.y, position.z);
-            const step = Math.min(0.06, this.fuseRemaining / 40);
-            velocity.y -= 12 * step;
-            const next = position.clone().addScaledVector(velocity, step);
-            const hit = sweepSphere(position, next, 0.065, this.colliders);
-            if (hit || next.y < 0.065) {
-                if (hit) next.copy(position).lerp(next, hit.time);
-                next.y = Math.max(0.065, next.y);
-                points.setXYZ(count++, next.x, next.y, next.z); break;
-            }
-            position.copy(next);
-        }
-        points.needsUpdate = true; this.trajectory.geometry.setDrawRange(0, Math.min(count, 41));
+    updateTrajectory(delta=1/30) {
+        this.trajectory.visible=!!this.held&&!this.pending&&this.movement.isLocked&&!this.movement.isDisabled;
+        if(!this.trajectory.visible)return;
+        const mode=this.movement.keys?.walk?'low':'high';this.aimClock=(this.aimClock||0)+delta;
+        if(this.aimInfo&&this.aimClock<1/30&&this.aimInfo.mode===mode)return;this.aimClock=0;
+        const launch=this.launchParameters(mode),wait=Math.max(0,PIN_DURATION-(this.held.armed?this.held.pinAge:0))+THROW_DURATION*THROW_RELEASE;
+        const flight=Math.max(0,(this.fuseRemaining??6)-wait),start=performance.now();
+        const prediction=predictGrenade(launch,flight,{colliders:this.colliders,room:this.room});
+        this.aimPredictMs=performance.now()-start;
+        this.trajectory.update(prediction,mode,this.camera);
+        this.aimInfo={mode,distance:Math.hypot(prediction.position.x-launch.position.x,prediction.position.z-launch.position.z),airburst:!prediction.resting,flight};
     }
 
     spawn(type, position, velocity) {
@@ -207,14 +201,14 @@ export class Throwables {
             if (projectile.justReleased) { projectile.justReleased = false; continue; }
             projectile.age += delta;
             projectile.bounceCooldown = Math.max(0, projectile.bounceCooldown - delta);
-            if (!projectile.resting) this.integrate(projectile, delta);
+            this.integrate(projectile, delta);
             if (projectile.age >= GRENADES[projectile.type].fuse) {
                 this.scene.remove(projectile.mesh);
                 this.projectiles.splice(i, 1);
                 this.detonate(projectile.type, projectile.position.clone());
             }
         }
-        this.updateTrajectory();
+        this.updateTrajectory(delta);
         for (let i = this.clouds.length - 1; i >= 0; i--) {
             this.clouds[i].update(delta);
             if (this.clouds[i].age >= this.clouds[i].duration) { this.clouds[i].dispose(this.scene); this.clouds.splice(i, 1); }
@@ -235,45 +229,7 @@ export class Throwables {
     }
 
     integrate(projectile, delta) {
-        const steps = Math.max(1, Math.ceil(delta / (1 / 90))), step = delta / steps;
-        for (let i = 0; i < steps && !projectile.resting; i++) {
-            const waterFrom=projectile.position.clone();
-            projectile.velocity.y -= 12 * step;
-            const next = projectile.position.clone().addScaledVector(projectile.velocity, step);
-            let hit = sweepSphere(projectile.position, next, 0.065, this.colliders);
-            if(hit?.box.villaPanel?.kind==='glass'){
-                const panel=hit.box.villaPanel;panel.takeBulletHit({point:projectile.position.clone().lerp(next,hit.time)},34,projectile.velocity.clone().normalize());projectile.velocity.multiplyScalar(.75);hit=null;
-            }
-            if (hit && this.room && hit.box === this.room.doorBox) {
-                const point = this.room.doorMesh.worldToLocal(projectile.position.clone().lerp(next, hit.time));
-                const center = new THREE.Vector2(point.x, point.y);
-                const blocked = this.room.doorPieces.some(piece => !this.room.brokenBoards.has(piece.id) && piece.bounds.distanceToPoint(center) < 0.065);
-                if (!blocked) hit = null;
-            }
-            if (hit && this.room) {
-                const pane = this.room.glassPanes.find(pane => pane.userData.collider === hit.box);
-                if (pane && !pane.userData.shattered) {
-                    this.room.shatterGlass(pane, { point: projectile.position.clone().lerp(next, hit.time) }, projectile.velocity.clone().normalize());
-                    projectile.velocity.multiplyScalar(0.75);
-                    hit = null;
-                }
-            }
-            if (hit) {
-                projectile.position.lerp(next, Math.max(0, hit.time - 0.002)).addScaledVector(hit.normal, 0.002);
-                projectile.velocity.reflect(hit.normal).multiplyScalar(0.48);
-                this.bounceSound(projectile);
-            } else projectile.position.copy(next);
-            this.room?.liquids?.crossing(waterFrom,projectile.position,'grenade',projectile.velocity.length());
-            if (projectile.position.y < 0.065) {
-                projectile.position.y = 0.065;
-                projectile.velocity.y = Math.abs(projectile.velocity.y) * 0.35;
-                projectile.velocity.x *= 0.72; projectile.velocity.z *= 0.72;
-                this.bounceSound(projectile);
-                if (projectile.velocity.length() < 0.5) { projectile.resting = true; projectile.velocity.set(0, 0, 0); }
-            }
-            projectile.mesh.rotation.x += projectile.velocity.length() * step * 2;
-            projectile.mesh.rotation.z += step * 3;
-        }
+        advanceGrenade(projectile,delta,{colliders:this.colliders,room:this.room,onBounce:p=>this.bounceSound(p)});
     }
     bounceSound(projectile) {
         if (projectile.bounceCooldown <= 0 && projectile.velocity.length() > 1) {

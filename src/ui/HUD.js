@@ -206,7 +206,8 @@ export class HUD {
             if (this.health) this.health.textContent = equipment.playerHealth;
             if (equipment.held) {
                 this.weaponName.textContent = `${equipment.held.type.toUpperCase()} // GRENADE`;
-                this.weaponMode.textContent = equipment.pending ? 'THROWING' : equipment.held.armed ? 'LIVE FUSE / THROW NOW' : 'PIN SAFE / RMB TO ARM';
+                const aim=equipment.aimInfo;
+                this.weaponMode.textContent = equipment.pending ? 'THROWING' : aim ? `${aim.mode==='low'?'LOW TOSS':'HIGH THROW'} · ${aim.distance.toFixed(1)} M${aim.airburst?' · AIRBURST':''}` : equipment.held.armed ? 'LIVE FUSE / THROW NOW' : 'PIN SAFE / RMB TO ARM';
                 this.ammoValue.textContent = equipment.fuseRemaining === null ? equipment.counts[equipment.held.type] : equipment.fuseRemaining.toFixed(1);
                 this.ammoReserve.textContent = equipment.fuseRemaining === null ? 'READY' : 'SEC';
             }
