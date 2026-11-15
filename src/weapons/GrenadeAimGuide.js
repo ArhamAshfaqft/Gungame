@@ -17,9 +17,6 @@ export class GrenadeAimGuide extends T.Group{
  }
  update(prediction,mode,camera){
   this.visible=true;this.prediction=prediction;this.mode=mode;
-  const points=prediction.points,n=Math.min(points.length,1024),data=this.geometry.attributes.instanceStart.data;
-  for(let i=0;i<n-1;i++){points[i].toArray(data.array,i*6);points[i+1].toArray(data.array,i*6+3);}
-  data.needsUpdate=true;this.geometry.instanceCount=Math.max(0,n-1);
   this.arc.material.color.setHex(mode==='low'?0xaee8ff:0xff674b);
   // Stair collision uses a slope beneath the rendered treads. Lift the marker
   // enough to clear their risers while keeping ordinary world occlusion.
@@ -27,5 +24,12 @@ export class GrenadeAimGuide extends T.Group{
   this.marker.visible=true;
   if(prediction.firstImpact||prediction.resting)place(this.marker,prediction.position,prediction.normal);
   else{this.marker.position.copy(prediction.position);this.marker.quaternion.copy(camera.getWorldQuaternion(new T.Quaternion()));}
+  const points=prediction.points,n=Math.min(points.length,1024),data=this.geometry.attributes.instanceStart.data;
+  // Share the marker's visible endpoint. Ease its surface-clearance offset into
+  // the arc so the line meets the centre dot without a gap or a sudden hook.
+  const lift=this.marker.position.clone().sub(prediction.position),point=new T.Vector3();
+  const write=(i,offset)=>point.copy(points[i]).addScaledVector(lift,(i/Math.max(1,n-1))**3).toArray(data.array,offset);
+  for(let i=0;i<n-1;i++){write(i,i*6);write(i+1,i*6+3);}
+  data.needsUpdate=true;this.geometry.instanceCount=Math.max(0,n-1);
  }
 }
