@@ -32,10 +32,8 @@ export function buildWellnessWing(m){
  }
  b(-15.6,y+.42,1.52,2.7,.84,.55,'walnut');
  for(let i=0;i<3;i++)for(let j=0;j<2;j++)d(-16.3+i*.65,.9+j*.075,1.52,.48,.07,.4,j?'linen':'white');
- m.sign('RECOVERY',-15.6,y+1.55,1.84,Math.PI);
  m.plant(-15.4,y,-9.4,.4);m.plant(-22,y,1.1,.35);
  m.lamp(-18,y+2.97,-6.5);m.lamp(-18,y+2.97,-.5);
- m.sign('WELLNESS / RECOVERY',-18,5.8,-9.85,0);
  // Timber battens and roof-edge planting make this wing recognizable outside.
  for(let z=-9.6;z<1.8;z+=.65)d(-23.2,1.65,z,.12,3.2,.1,'walnut');
  for(const z of [-9.95,1.95])b(-18.5,7.25,z,9,.9,.12,'stone');b(-22.95,7.25,-4,.12,.9,12,'stone');

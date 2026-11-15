@@ -305,14 +305,13 @@ export class VillaMap{
   picture.position.set(0,0,front*.027);picture.rotation.y=front<0?Math.PI:0;frame.add(picture);
  }
 
- sign(text,x,y,z,rotation=0){if(typeof document==='undefined')return;const canvas=document.createElement('canvas');canvas.width=512;canvas.height=128;const c=canvas.getContext('2d');c.fillStyle='#222b29';c.fillRect(0,0,512,128);c.fillStyle='#e5d5b1';c.font='bold 46px sans-serif';c.textAlign='center';c.fillText(text,256,81);const mesh=new THREE.Mesh(new THREE.PlaneGeometry(1.2,.3),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas),side:THREE.DoubleSide}));mesh.position.set(x,y,z);mesh.rotation.y=rotation;this.scene.add(mesh);}
  garden(){
   // Pool and timber deck. Water covers a solid shallow basin so there is no invisible fall.
   buildPool(this);
   for(const x of [-13,-2.5]){this.box(x,3.7,-20,.9,.28,3,'white');this.box(x,3.88,-20.9,.9,.15,1,'fabric',false,true);}
   this.box(8,3.46,-18,9,.14,9,'wood');for(const x of [4,12])for(const z of [-14,-22])this.box(x,4.9,z,.14,3,.14,'wood');for(let z=-22;z<=-14;z+=.5)this.box(8,6.5,z,8.5,.16,.16,'wood',false,true);
   this.sofaFacing(8,3.5,-20,4,8,-17.5);this.table(8,3.5,-17.5,2.5,1,.45);this.plant(12.5,3.4,-13.5,.55);
-  this.sign('SOLSTICE / 07',12,1.25,25.14,0);this.box(12,1.2,25,3.8,2.4,.25,'stone');
+  this.box(12,1.2,25,3.8,2.4,.25,'stone');
   for(const x of [-22,22])for(const z of [-28,-18,-7,18,28]){if(x===-22&&z===-7)continue;const y=z<8?3.4:0;this.box(x,y+.2,z,2,.4,2,'stone');this.plant(x,y+.4,z,.8);const trunk=this.cylinder(x,y+2.4,z,.12,4,'wood');const crown=new THREE.Mesh(new THREE.IcosahedronGeometry(1.8,1),this.materials.leaf);crown.position.set(x,y+4.6,z);crown.scale.set(1,1.25,1);crown.castShadow=true;this.scene.add(crown);this.decor.push(crown);}
   for(let z=21;z<31;z+=2.3)for(const x of [-17,17])this.plant(x,0,z,.35);
  }

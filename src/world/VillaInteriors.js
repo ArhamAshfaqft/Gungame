@@ -44,8 +44,6 @@ export function buildVillaInteriors(m){
   if(y===6.8)wall('z',-2,2.7,10.5,y,[doorway(6.3)],'Bathroom door');
   // The service stair sits in its own narrow circulation bay.
   if(y!==3.4)wall('x',10.5,-11,11,y,[doorway(-9.5,1.6,'open'),doorway(2.1,1.8,'open'),doorway(8,1.6,'open')],'Service passage');
-  const signs=y===0?['WORKSHOP','LAUNDRY']:y===3.4?['SALON','LIBRARY']:['PRIMARY','GUEST'];
-  m.sign(signs[0],-2.52,y+2.15,8.4,Math.PI/2);m.sign(signs[1],2.52,y+2.15,8.4,-Math.PI/2);
   rug(0,y,6,2.2,6,y===0?'rug':'blueRug');
   // A low console breaks the long entry sightline without obstructing the stairs.
   cabinet(-2.32,y,4.5,.62,.85,1.7);vase(-2.32,y+.85,4.5);frame(1.25,y+1.9,10.82,1.5,.9);
@@ -112,7 +110,7 @@ export function buildVillaInteriors(m){
  const y=6.8;m.study(-7.5,y,-5.5);rug(-7.8,y,-5,6.4,6.5,'blueRug');books(-8.3,y+.88,-5.4,5);cups(-6.5,y+.86,-5.2);
  cabinet(-6.8,y,-10.25,4.5,.7,.8);for(const x of [-8.4,-7.5,-6.6,-5.7])d(x,y+1,-10.2,.38,.42,.4,'linen');
  m.chairFacing(-4.5,y,-2.2,-5.8,-2.2);m.table(-5.8,y,-2.2,.8,.8,.55);vase(-5.8,y+.62,-2.2,.17);
- m.lamp(-7.7,y+2.97,-5.6);pendant(-7.5,y+2.55,-5.5,.45);m.sign('PRIVATE ARCHIVE',-11.5,y+2.2,-10.82,0);
+ m.lamp(-7.7,y+2.97,-5.6);pendant(-7.5,y+2.55,-5.5,.45);
  }
  // GUEST / DRESSING / SPA have different footprints instead of another four-square floor.
  {
@@ -175,7 +173,7 @@ export function buildGalleryWing(m){
  for(const [x,z,r] of [[17,-.3,.45],[21.4,.2,.35],[21,-4.8,.45]]){
   b(x,3.85,z,.9,.9,.9,'stone');const sculpture=new THREE.Mesh(new THREE.TorusKnotGeometry(r,.1,48,8),m.materials.steel);sculpture.position.set(x,4.7,z);sculpture.castShadow=true;m.scene.add(sculpture);m.decor.push(sculpture);
  }
- m.art(16,5.3,1.83,1.6,1.1);m.art(22,5.3,1.83,1.7,1.1);m.sign('COLLECTION / 07',19,5.75,1.82,Math.PI);
+ m.art(16,5.3,1.83,1.6,1.1);m.art(22,5.3,1.83,1.7,1.1);
  for(const [x,z] of [[16,-8],[22,-8],[16,-5.5],[22,-5.5]]){b(x,3.65,z,1.4,.5,1.4,'stone');m.plant(x,3.9,z,.65);}
  m.sofaFacing(19,3.4,-8,3.2,19,-6);m.table(19,3.4,-6,1.6,.8,.45);m.lamp(19,6.3,-.5);m.lamp(19,6.3,-6);
  // Low walls give cover on the accessible roof garden and leave the balcony route clear.
@@ -183,5 +181,4 @@ export function buildGalleryWing(m){
  m.sofaFacing(18,6.8,-6,2.8,18,-4);m.table(18,6.8,-4,1.6,.8,.45);
  for(const x of [16,19,22]){b(x,.5,-7,1.4,1,1.2,'wood');b(x,1.5,-7,1.1,1,.9,'wood');}
  m.wall('x',21.8,-4,2,0,[{at:-1,width:2,height:2.4,kind:'open'}],'plaster',true);
- m.sign('COLLECTION',14.12,5.55,-8.6,-Math.PI/2);
 }
