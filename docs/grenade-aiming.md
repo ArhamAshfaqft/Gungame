@@ -24,8 +24,8 @@ remain in place.
 
 The guide uses fixed line buffers, two screen-width line draws and small marker
 meshes, without lights or physics bodies. It is excluded from SSAO and projectile
-hit tests. The first-person spare hand stays extended after the pin pull; saved
-firearm poses and the existing imported third-person throw are retained.
+hit tests. Hand poses are restored to their state before the indicator update;
+saved firearm poses and the existing imported third-person throw are retained.
 
 Verification: `tests/grenade-aim.test.js` compares flight across 30/60/144 Hz,
 wall/floor bounces, cooked endpoints, glass, support removal and buffer reuse.
