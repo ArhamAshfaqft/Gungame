@@ -13,12 +13,19 @@ Without configured secrets, direct networking stays available. A failed join is
 not proof that a relay is necessary: a new direct attempt can succeed. More STUN
 servers alone do not replace a relay for networks that cannot connect directly.
 
-## Optional Cloudflare relay setup (not activated)
+## Cloudflare relay setup
 
-The user requires zero hosting cost. Do not activate a service with paid overages
-as part of the direct-connection fixes. The following setup is optional and needs
-an explicit decision to accept potential charges; it is not required for direct
-connections that already work between the host and guest.
+The user explicitly authorized relay activation on November 15, 2026 and added
+Production TURN secrets in the Cloudflare dashboard. Redeployment `cd2442c`
+activated the existing endpoint. A forced-relay test with production-issued
+credentials connected two browser profiles through TURN and synchronized the
+villa world. Both selected routes were relay-to-relay, with traffic in both
+directions. This validates the service; the user's two PCs still need to retry.
+
+`node scripts/check-turn-relay.mjs` repeats the test using Vite at port 5194.
+It keeps credentials in memory and reports only route types and byte counts.
+Normal gameplay retains direct connections where possible and can use relay
+candidates when direct routes fail.
 
 1. In the Cloudflare account, open **Realtime → TURN** and create a TURN key for
    this game. Review the service's billing terms before activating it.
