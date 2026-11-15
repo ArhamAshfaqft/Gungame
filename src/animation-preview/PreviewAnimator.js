@@ -1,16 +1,26 @@
 import * as T from 'three';
 import {ShooterAnimator} from '../models/ShooterAnimator.js';
+import {applyBodyLean} from '../models/BodyLean.js';
 
 // Experimental controller, imported exclusively by animation-preview.html.
 // The game's local and network character controllers never construct this class.
 const WALK=['walk','strafeRight','walkBack','strafeLeft'];
 const RUN=['run','rifleRunForwardRight','strafeRunRight','rifleRunBackwardRight','runBack','rifleRunBackwardLeft','strafeRunLeft','rifleRunForwardLeft'];
+const CROUCH=['rifleCrouchWalk','rifleCrouchWalkForwardRight','rifleCrouchRight',null,'rifleCrouchBack',null,'rifleCrouchLeft','rifleCrouchWalkForwardLeft'];
 function directionWeights(ids,forward,lateral){
  const angle=((Math.atan2(lateral,forward)+Math.PI*2)%(Math.PI*2))/(Math.PI*2)*ids.length;
- const i=Math.floor(angle),t=angle-i;
- return [[ids[i],1-t],[ids[(i+1)%ids.length],t]];
+ let a=Math.floor(angle),b=a+1;
+ while(!ids[(a+ids.length)%ids.length])a--;
+ while(!ids[b%ids.length])b++;
+ const t=(angle-a)/(b-a);
+ return [[ids[(a+ids.length)%ids.length],1-t],[ids[b%ids.length],t]];
 }
-export function locomotionWeights({speed=0,forward=1,lateral=0}={}){
+export function locomotionWeights({speed=0,forward=1,lateral=0,isCrouching=false}={}){
+ if(isCrouching){
+  const move=T.MathUtils.smoothstep(speed,.03,.75),weights=new Map([['rifleCrouchIdle',1-move]]);
+  for(const [id,w] of directionWeights(CROUCH,forward,lateral))weights.set(id,(weights.get(id)||0)+w*move);
+  return weights;
+ }
  const move=T.MathUtils.smoothstep(speed,.03,.9),run=T.MathUtils.smoothstep(speed,1.3,3.6),weights=new Map([['rifleReadyIdle',1-move]]);
  for(const [ids,amount] of [[WALK,move*(1-run)],[RUN,move*run]])for(const [id,w] of directionWeights(ids,forward,lateral))weights.set(id,(weights.get(id)||0)+w*amount);
  return weights;
@@ -18,7 +28,8 @@ export function locomotionWeights({speed=0,forward=1,lateral=0}={}){
 export class PreviewAnimator extends ShooterAnimator{
  constructor(rig,pack){
   super(rig,pack);this.phase=0;this.weights=new Map([['rifleReadyIdle',1]]);this.offsets=new Map();this.oneShot=null;this.wasMoving=false;this.ran=false;
-  for(const id of new Set([...WALK,...RUN]))if(this.clips.has(id))this.offsets.set(id,this.matchPhase(id,'walk',0)/this.clips.get(id).duration);
+  this.lean=0;
+  for(const id of new Set([...WALK,...RUN,...CROUCH].filter(Boolean)))if(this.clips.has(id))this.offsets.set(id,this.matchPhase(id,CROUCH.includes(id)?'rifleCrouchWalk':'walk',0)/this.clips.get(id).duration);
  }
  startAction(id){
   if(!this.clips.has(id))return;
@@ -26,9 +37,12 @@ export class PreviewAnimator extends ShooterAnimator{
  }
  update(delta,state={}){
   delta=Math.min(delta,.05);const speed=state.speed||0,moving=speed>.15;
-  if(speed>2.2)this.ran=true;
+  if(speed>2.2&&!state.isCrouching)this.ran=true;
+  if(state.isCrouching)this.ran=false;
   if(!moving&&this.wasMoving&&this.ran&&!this.oneShot){this.startAction('rifleRunStop');this.ran=false;}
-  if(!moving&&!this.oneShot&&Math.abs(state.yawRate||0)>.3)this.startAction(state.yawRate>0?'turnLeft':'turnRight');
+  if(this.wasCrouching!==undefined&&this.wasCrouching!==!!state.isCrouching){this.oneShot=null;if(!moving)this.startAction(state.isCrouching?'rifleStandToCrouch':'rifleCrouchToStand');}
+  this.wasCrouching=!!state.isCrouching;
+  if(!moving&&!this.oneShot&&Math.abs(state.yawRate||0)>.3)this.startAction(state.isCrouching?(state.yawRate>0?'rifleCrouchTurnLeft':'rifleCrouchTurnRight'):(state.yawRate>0?'turnLeft':'turnRight'));
   this.wasMoving=moving;
   if(moving&&this.oneShot?.id!=='rifleRunStop')this.oneShot=null;
   if(moving&&speed>1&&this.oneShot?.time>.15)this.oneShot=null;
@@ -38,7 +52,7 @@ export class PreviewAnimator extends ShooterAnimator{
   const total=[...this.weights.values()].reduce((a,b)=>a+b,0)||1;
   for(const [id,w] of this.weights)this.weights.set(id,w/total);
   let stride=0,movingWeight=0;
-  for(const [id,w] of this.weights){if(!this.offsets.has(id))continue;const data=this.pack.clips.find(c=>c.id===id),d=data.sourceRootDelta,measured=d?Math.hypot(d[0],d[2])*.01/data.duration:0;const velocity=measured>.2?measured:WALK.includes(id)?1.05:3.1;stride+=w*velocity*data.duration;movingWeight+=w;}
+  for(const [id,w] of this.weights){if(!this.offsets.has(id))continue;const data=this.pack.clips.find(c=>c.id===id),d=data.sourceRootDelta,measured=d?Math.hypot(d[0],d[2])*.01/data.duration:0;const velocity=measured>.2?measured:CROUCH.includes(id)?.9:WALK.includes(id)?1.05:3.1;stride+=w*velocity*data.duration;movingWeight+=w;}
   if(movingWeight>.001)this.phase=(this.phase+delta*T.MathUtils.clamp(speed/(stride/movingWeight),0,3.5))%1;
   const shot=this.oneShot,duration=shot?this.clips.get(shot.id).duration:0;
   if(shot)shot.time+=delta;
@@ -54,6 +68,8 @@ export class PreviewAnimator extends ShooterAnimator{
   this.mixer.update(0);this.captureAuthoredPose();this.current=dominant;this.actionRemaining=0;
   // No frozen upper-body replacement or accumulated pose edits in this baseline.
   this.capturePresentedPose();
+  this.lean=T.MathUtils.damp(this.lean,T.MathUtils.clamp(state.lean||0,-1,1),12,delta);
+  applyBodyLean(this.rig,{...state,lean:this.lean,leanDistance:.26});
   if(shot&&shot.time>=duration)this.oneShot=null;
  }
 }

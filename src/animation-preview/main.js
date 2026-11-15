@@ -28,35 +28,39 @@ async function start(){
  for(const [rig,rifle] of [[baseline,rifleA],[preview,rifleB]]){rig.object.add(rifle);rig.animatedModel=rifle;rig.animatedKind='rifle';rig.animatedSlot='primary';rig.object.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});scene.add(rig.object);}
  baseline.resolveAnimationPose=()=>applySniperM4Pose(baseline,library,'primary',0,{clip:baseline.animator.current,time:baseline.animator.actions.get(baseline.animator.current)?.time||0,state:'hip'});
  baseline.peekPoses=library.peekPoses;baseline.peekTimelines=library.peekTimelines;
- const keys=new Set(),position=new T.Vector3();let automatic=true,paused=false,time=0,heading=0,speed=0,forward=1,lateral=0,previousTime=performance.now();
- function reset(){position.set(0,0,0);time=0;heading=0;speed=0;forward=1;lateral=0;keys.clear();}
+ const keys=new Set(),position=new T.Vector3();let automatic=true,paused=false,time=0,heading=0,speed=0,forward=1,lateral=0,previousTime=performance.now(),inputState=null;
+ function reset(){camera.position.sub(position);position.set(0,0,0);time=0;heading=0;speed=0;forward=1;lateral=0;keys.clear();}
  function showMode(){ $('demo').textContent=automatic?'Automatic comparison':'Manual control — click for demo'; }
  $('demo').onclick=()=>{automatic=!automatic;reset();showMode();};$('pause').onclick=()=>{paused=!paused;$('pause').textContent=paused?'Resume':'Pause';};$('reset').onclick=reset;
- const owned=new Set(['KeyW','KeyA','KeyS','KeyD','ShiftLeft','ShiftRight','ArrowLeft','ArrowRight']);
- window.addEventListener('keydown',event=>{if(!owned.has(event.code)||/INPUT|SELECT/.test(event.target.tagName))return;event.preventDefault();keys.add(event.code);automatic=false;showMode();});
+ const directions={idle:[0,0],forward:[1,0],backward:[-1,0],left:[0,-1],right:[0,1],'forward-left':[Math.SQRT1_2,-Math.SQRT1_2],'forward-right':[Math.SQRT1_2,Math.SQRT1_2],'backward-left':[-Math.SQRT1_2,-Math.SQRT1_2],'backward-right':[-Math.SQRT1_2,Math.SQRT1_2]};
+ for(const id of ['posture','peek','direction','pace'])$(id).onchange=()=>{automatic=false;keys.clear();showMode();};
+ const owned=new Set(['KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE','KeyX','ShiftLeft','ShiftRight','ArrowLeft','ArrowRight']);
+ window.addEventListener('keydown',event=>{if(!owned.has(event.code)||/INPUT|SELECT/.test(event.target.tagName))return;event.preventDefault();if(event.code==='KeyX'&&!event.repeat)$('posture').value=$('posture').value==='crouched'?'standing':'crouched';
+ if(automatic){$('direction').value='idle';$('peek').value='0';}
+ if(['KeyW','KeyA','KeyS','KeyD'].includes(event.code))$('direction').value='idle';keys.add(event.code);automatic=false;showMode();});
  window.addEventListener('keyup',event=>keys.delete(event.code));window.addEventListener('blur',()=>keys.clear());
  function demo(t){
-  const s=t%24;
-  if(s<2)return{f:0,l:0,v:0,label:'Idle'};
-  if(s<5)return{f:1,l:0,v:1.25,label:'Walk'};
-  if(s<9)return{f:1,l:0,v:3.7,label:'Run'};
-  if(s<11)return{f:0,l:0,v:0,label:'Stop'};
-  if(s<14)return{f:0,l:-1,v:1.25,label:'Strafe left'};
-  if(s<17)return{f:0,l:1,v:1.25,label:'Strafe right'};
-  if(s<20)return{f:Math.SQRT1_2,l:Math.SQRT1_2,v:3.7,label:'Diagonal run'};
-  if(s<21)return{f:0,l:0,v:0,label:'Stop'};
-  return{f:0,l:0,v:0,turn:.65,label:'Turn in place'};
+  const index=Math.floor(t/3)%54,direction=Object.keys(directions)[index%9],lean=[0,-1,1][Math.floor(index/9)%3],crouched=index>=27,[f,l]=directions[direction];
+  $('posture').value=crouched?'crouched':'standing';$('peek').value=String(lean);$('direction').value=direction;
+  return{f,l,v:direction==='idle'?0:crouched?.9:1.25,lean,crouched,label:`${crouched?'Crouched':'Standing'} · ${direction.replaceAll('-',' ')} · ${lean<0?'peek left':lean>0?'peek right':'no peek'}`};
+ }
+ function manual(){
+  let f=Number(keys.has('KeyW'))-Number(keys.has('KeyS')),l=Number(keys.has('KeyD'))-Number(keys.has('KeyA'));
+  if(!f&&!l)[f,l]=directions[$('direction').value];
+  const length=Math.hypot(f,l)||1,crouched=$('posture').value==='crouched',lean=keys.has('KeyQ')||keys.has('KeyE')?Number(keys.has('KeyE'))-Number(keys.has('KeyQ')):Number($('peek').value),running=keys.has('ShiftLeft')||keys.has('ShiftRight')||$('pace').value==='run';
+  return{f:f/length,l:l/length,v:f||l?crouched?.9:running?3.7:1.25:0,crouched,lean,turn:(Number(keys.has('ArrowLeft'))-Number(keys.has('ArrowRight')))*1.2,label:`${crouched?'Crouched':'Standing'} · ${lean<0?'peek left':lean>0?'peek right':'no peek'}`};
  }
  for(const id of ['demo','pause','reset'])$(id).disabled=false;
  status.textContent='Automatic comparison · same movement inputs';
  function frame(now){
-  requestAnimationFrame(frame);const elapsed=Math.min((now-previousTime)/1000,.05);previousTime=now;const dt=paused?0:elapsed*Number($('rate').value);
+  requestAnimationFrame(frame);const elapsed=Math.max(0,Math.min((now-previousTime)/1000,.05));previousTime=now;const dt=paused?0:elapsed*Number($('rate').value);
   let input;
-  if(automatic){time+=dt;input=demo(time);}else{const f=Number(keys.has('KeyW'))-Number(keys.has('KeyS')),l=Number(keys.has('KeyD'))-Number(keys.has('KeyA')),length=Math.hypot(f,l)||1;input={f:f/length,l:l/length,v:f||l?keys.has('ShiftLeft')||keys.has('ShiftRight')?3.7:1.25:0,turn:(Number(keys.has('ArrowLeft'))-Number(keys.has('ArrowRight')))*1.2,label:'Manual movement'};}
+  if(automatic){time+=dt;input=demo(time);}else input=manual();
   speed=T.MathUtils.damp(speed,input.v,input.v?6:9,dt);if(input.v){forward=input.f;lateral=input.l;}
   const yawRate=input.turn||0;heading+=yawRate*dt;
   const displacement=new T.Vector3(Math.sin(heading)*forward+Math.cos(heading)*lateral,0,Math.cos(heading)*forward-Math.sin(heading)*lateral).multiplyScalar(speed*dt);position.add(displacement);camera.position.add(displacement);orbit.target.copy(position).y=1;sun.position.copy(position).add(new T.Vector3(-8,14,-6));sun.target.position.copy(position);
-  const state={speed,forward,lateral,yawRate,equipment:'rifle',isSprinting:input.v>3,isGrounded:true,isCrouching:false,aimPitch:0,adsProgress:0};
+  const state={speed,forward,lateral,yawRate,equipment:'rifle',isSprinting:input.v>3,isGrounded:true,isCrouching:!!input.crouched,lean:input.lean,leanDistance:.26,aimPitch:0,adsProgress:0};
+  inputState=state;
   baseline.object.position.copy(position).x+=2.1;preview.object.position.copy(position).x-=2.1;baseline.object.rotation.y=preview.object.rotation.y=heading;
   if(dt){
    if($('baseline').value==='game'){applySniperM4Pose(baseline,library,'primary',0);baseline.update(dt,state);}
@@ -68,6 +72,6 @@ async function start(){
   orbit.update();renderer.render(scene,camera);
  }
  // Read-only inspection hook for automated preview checks; no main-game state.
- window.__animationPreview={baseline,preview,get state(){return{automatic,paused,time,speed,position:position.toArray()};}};
+ window.__animationPreview={baseline,preview,get state(){return{automatic,paused,time,speed,position:position.toArray(),crouched:!!inputState?.isCrouching,lean:inputState?.lean||0,forward:inputState?.forward||0,lateral:inputState?.lateral||0};}};
  requestAnimationFrame(frame);
 }

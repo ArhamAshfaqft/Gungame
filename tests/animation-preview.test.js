@@ -24,8 +24,8 @@ const gltf = await new GLTFLoader().parseAsync(buffer.buffer.slice(buffer.byteOf
 
 const pack={clips:['shooter-pack','rifle-run-pack','rifle-expansion-pack'].flatMap(name=>JSON.parse(readFileSync(new URL(`../public/assets/animations/${name}.json`,import.meta.url))).clips)};
 test('continuous preview weights remain normalized across every heading and speed',()=>{
- for(let angle=-Math.PI;angle<=Math.PI;angle+=.03)for(const speed of [0,.1,.5,1.25,2.2,3.7]){
-  const weights=locomotionWeights({speed,forward:Math.cos(angle),lateral:Math.sin(angle)});
+ for(let angle=-Math.PI;angle<=Math.PI;angle+=.03)for(const speed of [0,.1,.5,1.25,2.2,3.7])for(const isCrouching of [false,true]){
+  const weights=locomotionWeights({speed,isCrouching,forward:Math.cos(angle),lateral:Math.sin(angle)});
   assert.ok(Math.abs([...weights.values()].reduce((a,b)=>a+b,0)-1)<1e-9);
   assert.ok([...weights.values()].every(w=>w>=0&&Number.isFinite(w)));
  }
@@ -42,4 +42,20 @@ test('preview uses bounded phase-synchronized blends, real stop and turn clips, 
   if(frame===370)assert.ok(['turnLeft','turnRight'].includes(a.oneShot?.id));
  }
  assert.equal(JSON.stringify(pack),source,'source animation assets stay unchanged');
+});
+
+
+test('every crouch/standing direction and peek stays finite and lean leaves feet unchanged',()=>{
+ const rigs=[0,1].map(()=>instantiateSwatRig(gltf.scene.getObjectByName('SWAT_Body'))),animators=rigs.map(r=>new PreviewAnimator(r,pack));
+ const directions=[[0,0],[1,0],[-1,0],[0,-1],[0,1],[1,-1],[1,1],[-1,-1],[-1,1]];
+ let standingHead,crouchedHead;
+ for(const crouched of [false,true])for(const [forward,lateral] of directions)for(const lean of [0,-1,1]){
+  const state={speed:forward||lateral?crouched?.9:1.25:0,forward,lateral,isCrouching:crouched};
+  for(let frame=0;frame<75;frame++){animators[0].update(1/60,{...state,lean:0});animators[1].update(1/60,{...state,lean});}
+  for(const rig of rigs){rig.object.updateMatrixWorld(true);for(const bone of Object.values(rig.bones)){assert.ok([...bone.position.toArray(),...bone.quaternion.toArray()].every(Number.isFinite));assert.ok(Math.abs(bone.quaternion.length()-1)<.005);}}
+  for(const name of ['LeftFoot','RightFoot','Hips'])assert.ok(rigs[0].bones[name].getWorldPosition(new THREE.Vector3()).distanceTo(rigs[1].bones[name].getWorldPosition(new THREE.Vector3()))<1e-6,'peek does not pull feet or pelvis off the gait');
+  if(!forward&&!lateral&&!lean){const height=rigs[1].bones.Head.getWorldPosition(new THREE.Vector3()).y;if(crouched)crouchedHead=height;else standingHead=height;}
+  assert.ok([...animators[1].weights.values()].reduce((a,b)=>a+b,0)>.999);
+ }
+ assert.ok(standingHead-crouchedHead>.25,'crouch visibly lowers the body');
 });
