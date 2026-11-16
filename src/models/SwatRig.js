@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { ShooterAnimator, loadShooterPack, loadPistolPack } from './ShooterAnimator.js';
 import { readLibrary, POSE_STORAGE_KEY } from '../studio/PoseLibrary.js';
+import {fitWeaponReach} from './WeaponGripFit.js';
 import { applyBodyLean } from './BodyLean.js';
 import { samplePeekPose,applyPeekHands,applyPistolReady,applyCrouchedRiflePeek } from '../studio/PeekPoses.js';
 import {ASSAULT_LEFT_GRIP,ASSAULT_RIGHT_GRIP} from './AssaultRifleModel.js';
@@ -531,6 +532,7 @@ export class SwatRig {
         }
         this.resolveAnimationPose?.(state);
         prepareM4HoldingArms(this,state);
+        const refinedRiflePeek=this.refinedPeek&&this.animatedKind==='rifle'&&Math.abs(state.lean||0)>.001&&!state.isReloading&&!/reload|throw|hit/.test(this.animator.current);
         const crouchedRiflePeek=applyCrouchedRiflePeek(this,state);
         const peek=samplePeekPose(this.peekPoses,this.animatedSlot || 'primary',state,this.peekTimelines);
         if(this.animatedKind==='pistol'&&state.isCrouching)applyPistolReady(this,state);
@@ -592,14 +594,18 @@ export class SwatRig {
                 model.quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...peek.weapon.rotation)));
                 model.updateMatrixWorld(true);
             }
+            if(refinedRiflePeek){
+                fitWeaponReach(this,model,rightAnchor,model.userData.supportGrip||BODY_SUPPORT_GRIP,this.thirdPersonRightGrips?.[slot],this.thirdPersonGrips?.[slot]);
+            }
             // Solve the trigger hand after placing the weapon from its unmodified animation
             // anchor, so moving the hand does not drag the weapon along with it.
             const palmFrames=slot==='assault'&&kind==='rifle'?bindPalmGripFrames(this,model):null;
             this.palmGripAdjustment=palmFrames?keepPalmTargetsReachable(this,model,palmFrames,{Right:this.thirdPersonRightGrips?.[slot],Left:this.thirdPersonGrips?.[slot]},state.handIK!==false&&this.poseSupportIK!==false&&!['reload','throw','hit'].includes(this.animator.current)):null;
             this.palmGripDiagnostics=null;
             const right = this.thirdPersonRightGrips?.[slot];
-            const basePosition = this.pinTriggerToWeapon ? model.localToWorld(rightAnchor) : originalRightPosition;
-            const baseRotation = this.pinTriggerToWeapon ? model.getWorldQuaternion(new THREE.Quaternion()).multiply(rightBasis) : originalRightRotation;
+            const pinTrigger=this.pinTriggerToWeapon||refinedRiflePeek;
+            const basePosition = pinTrigger ? model.localToWorld(rightAnchor) : originalRightPosition;
+            const baseRotation = pinTrigger ? model.getWorldQuaternion(new THREE.Quaternion()).multiply(rightBasis) : originalRightRotation;
             this.rightGripBase = { position: basePosition.clone(), quaternion: baseRotation.clone() };
             if(palmFrames&&!right?.contact){
                 this.placeGuidedShoulder('Right',right,model);
@@ -611,7 +617,7 @@ export class SwatRig {
             }else if (right) {
                 this.placeGuidedShoulder('Right',right,model);
                 const target = basePosition.clone().add(new THREE.Vector3().fromArray(right.position).applyQuaternion(model.getWorldQuaternion(new THREE.Quaternion())));
-                if (right.position.some(value => value !== 0)||(this.pinTriggerToWeapon&&(placement?.position.some(n=>n!==0)||placement?.rotation.some(n=>n!==0)||peek?.weapon.position.some(n=>n!==0)||peek?.weapon.rotation.some(n=>n!==0)))||right.shoulder?.some(n=>n!==0)||right.elbowTarget?.some(n=>n!==0)) {
+                if (refinedRiflePeek||right.position.some(value => value !== 0)||(pinTrigger&&(placement?.position.some(n=>n!==0)||placement?.rotation.some(n=>n!==0)||peek?.weapon.position.some(n=>n!==0)||peek?.weapon.rotation.some(n=>n!==0)))||right.shoulder?.some(n=>n!==0)||right.elbowTarget?.some(n=>n!==0)) {
                     this.solveIK(this.bones.RightArm, this.bones.RightForeArm, this.bones.RightHand, target,
                         this.guidedElbowPole('Right',right,model));
                 }

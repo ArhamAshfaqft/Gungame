@@ -139,6 +139,7 @@ class FastSnipeGame {
         this.settings = new Settings(this.movement);
         this.graphics = new GraphicsSettings(this);
         this.thirdPerson = new ThirdPersonView(this.scene,this.camera,this.movement,this.weapon,this.equipment,this.arena.colliders);
+        this.thirdPerson.refinedPeek = !this.networkMode;
         this.viewButton = document.createElement('button'); this.viewButton.id = 'camera-toggle';
         this.viewButton.textContent = 'Loading character…'; this.viewButton.disabled = true;
         document.body.append(this.viewButton);

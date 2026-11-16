@@ -63,6 +63,7 @@ export class ThirdPersonView {
     update(delta) {
         if (!this.rig) return;
         const { rig, movement: m, weapon: w } = this;
+        rig.refinedPeek = this.refinedPeek === true;
         const eyeView=this.usesBodyFirstPerson;
         setCharacterEyeView(rig,eyeView);
         if(m.isDisabled){

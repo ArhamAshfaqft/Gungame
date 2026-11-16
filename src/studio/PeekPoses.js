@@ -79,12 +79,14 @@ export function applyCrouchedRiflePeek(rig,state={}){
  const weight=Math.min(1,Math.abs(state.lean||0));
  const aim=rig.animator?.holdingPoses?.rifle,ready=rig.animator?.holdingPoses?.rifleReady;
  if(!weight||!aim||!ready)return false;
- // Only correct the crouched sideways clips; stationary peek and forward
- // locomotion retain their authored torso and the saved Studio adjustments.
- if(/^rifleCrouch(Left|Right)$/.test(rig.animator.current)&&rig.animator.crouchPeekTorso){
+ // The single-player correction shares an upright chest across crouch gaits.
+ // Other controllers retain the existing strafe-only assistance.
+ const torso=rig.refinedPeek?rig.animator.uprightPeekTorso:rig.animator.crouchPeekTorso;
+ if((rig.refinedPeek||/^rifleCrouch(Left|Right)$/.test(rig.animator.current))&&torso){
   rig.object.updateMatrixWorld(true);
   const root=rig.object.getWorldQuaternion(new THREE.Quaternion());
-  const targets=new Map([...rig.animator.crouchPeekTorso].map(([name,rotation])=>[name,rig.bones[name].getWorldQuaternion(new THREE.Quaternion()).slerp(root.clone().multiply(rotation),weight)]));
+  const torsoWeight=rig.refinedPeek?Math.min(1,weight*2):weight;
+  const targets=new Map([...torso].map(([name,rotation])=>[name,rig.bones[name].getWorldQuaternion(new THREE.Quaternion()).slerp(root.clone().multiply(rotation),torsoWeight)]));
   for(const [name,target] of targets){rig.setWorldRotation(rig.bones[name],target);rig.bones[name].updateMatrixWorld(true);}
  }
  const ads=THREE.MathUtils.clamp(state.adsProgress??(state.isAiming?1:0),0,1);
