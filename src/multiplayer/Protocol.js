@@ -1,4 +1,4 @@
-export const PROTOCOL = 5;
+export const PROTOCOL = 6;
 export const STEP = 1 / 60;
 export const MAX_PLAYERS = 4;
 export const INPUT_KEYS = ['forward','backward','left','right','sprint','jump','slide','walk','crouch','leanLeft','leanRight'];

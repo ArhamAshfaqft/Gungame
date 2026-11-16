@@ -72,3 +72,17 @@ test('both internal stairs reach every finished landing without jumping',()=>{
   assert.ok(Math.abs(p.position.y-p.currentHeight-base-3.4)<.03,'feet reach the finished landing height');
  }
 });
+
+
+test('pool-side lawns have continuous raised ground up to the perimeter without filling the pool',()=>{
+ const map=make();
+ for(let x=-24.5;x<=30.5;x+=1)for(let z=-34.5;z<=-11.5;z+=1){
+  if(x>=-11.75&&x<=-4.25&&z>=-23.25&&z<=-16.75)continue;
+  assert.ok(map.colliders.some(b=>!b.ramp&&b.min.x<=x&&b.max.x>=x&&b.min.z<=z&&b.max.z>=z&&b.min.y<=0.01&&b.max.y>=3.15),`unsupported terrace foundation at ${x},${z}`);
+ }
+ assert.ok(!map.colliders.some(b=>b.containsPoint(new T.Vector3(-8,2.7,-20))),'pool basin remains open beneath the water');
+ for(const x of [-23.5,29.8]){
+  const p=new MovementController(new T.PerspectiveCamera(),null,{input:false});p.position.set(x,3.4+p.currentHeight,-27);p.yaw=0;p.isGrounded=true;p.keys.forward=true;
+  for(let i=0;i<120;i++){p.update(1/60,map.colliders);assert.ok(p.position.y-p.currentHeight>=3.14,'walking beside the lawn cannot drop to the lower courtyard');}
+ }
+});

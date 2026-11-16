@@ -157,7 +157,9 @@ export class VillaMap{
   this.box(0,-.16,0,100,.3,100,'earth');this.box(0,-.015,22,50,.06,24,'concrete');
   for(const x of [-25,31]){this.box(x,2.85,-13,.35,5.7,44,'stone');this.box(x,1.15,22,.35,2.3,26,'stone');}this.box(3,2.85,-35,56,5.7,.35,'stone');this.box(3,1.15,35,56,2.3,.35,'stone');
   // Terraced garden sits level with the main floor; the front retains a lower garage court.
-  cutSlab(this,[-22,22,-33,-11],1.58,3.16,'earth');cutSlab(this,[-17,17,-29,-11],3.32,.16,'stone');
+  // Extend the foundation to the inside faces of the perimeter walls.
+  // Lawn finishes must never bridge an empty drop into the lower ground.
+  cutSlab(this,[-24.825,30.825,-34.825,-11],1.66,3.32,'earth');cutSlab(this,[-17,17,-29,-11],3.32,.16,'stone');
   this.box(-21,1.58,-1,6,3.16,20,'earth');this.box(27,1.58,-1,6,3.16,20,'earth');
   this.stairs(0,0,16.5,7,4.8,3.4,'Front approach');this.box(0,3.28,12,5,.24,2.3,'stone');
   this.stairs(-16.5,0,10.1,7,2.5,3.4,'Garden stair');
@@ -335,8 +337,9 @@ export class VillaMap{
   for(const x of [5,12])this.box(x,10.9,-6,.12,1.5,.12,'metal',false,true);
   for(let z=-10;z<-2;z+=.5)this.box(8.5,11.7,z,7.4,.12,.12,'wood',false,true);
   // Planters, lawn strips, lounge details and path lights soften the hardscape.
-  for(const x of [-20,20])this.box(x<0?x:27,3.19,-10,4.5,.08,30,'grass');
-  this.box(0,3.19,-30.5,35,.08,5,'grass');
+  // Finish the raised ground continuously, flush with the pool terrace.
+  for(const [left,right] of [[-24.825,-17],[17,30.825]])this.box((left+right)/2,3.36,-22.9125,right-left,.08,23.825,'grass');
+  this.box(0,3.36,-31.9125,34,.08,5.825,'grass');
   for(const x of [-13.5,-2.5])for(const z of [-26,-14])this.plant(x,3.4,z,.4);
   for(const y of [3.4,6.8])for(const z of [2,8]){
    this.box(0,y+3.02,z,2,.04,.08,'white',false,true);

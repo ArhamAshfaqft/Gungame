@@ -8,21 +8,23 @@ export class CombatAudio {
             }))).catch(()=>null);
         return this.loading;
     }
-    play(key,{volume=.5,delay=0,rate=1,group='effects',duration=null,position=null,stereo=0}={}) {
+    play(key,{volume=.5,delay=0,rate=1,group='effects',duration=null,position=null,stereo=0,range=12,maxDistance=Infinity}={}) {
         const {ctx,masterGain,isMuted}=this.engine,buffer=this.buffers.get(key);
         if(!ctx||isMuted||!buffer)return false;
+        const spatial=position&&this.listener?this.spatial(position,range,maxDistance):{volume:1,pan:stereo};
+        if(spatial.volume<.001)return true;
         if(this.active.size>=this.limit){const oldest=[...this.active].find(v=>v.group==='effects');if(oldest){this.active.delete(oldest);oldest.source.stop();}else return true;}
         const source=ctx.createBufferSource(),gain=ctx.createGain();source.buffer=buffer;source.playbackRate.value=rate;
-        const spatial=position&&this.listener?this.spatial(position):{volume:1,pan:stereo};
         gain.gain.value=volume*spatial.volume;source.connect(gain);
         let pan;if(spatial.pan){pan=ctx.createStereoPanner();pan.pan.value=spatial.pan;gain.connect(pan);pan.connect(masterGain);}else gain.connect(masterGain);
         const voice={source,group};this.active.add(voice);
         source.onended=()=>{this.active.delete(voice);source.disconnect();gain.disconnect();pan?.disconnect();};
         source.start(ctx.currentTime+Math.max(0,delay),0,duration??buffer.duration);return true;
     }
-    spatial(position) {
+    spatial(position,range=12,maxDistance=Infinity) {
         const dx=position.x-this.listener.position.x,dy=position.y-this.listener.position.y,dz=position.z-this.listener.position.z,distance=Math.hypot(dx,dy,dz);
-        return {volume:1/(1+(distance/12)**2),pan:Math.max(-.8,Math.min(.8,(dx*Math.cos(this.listener.yaw)-dz*Math.sin(this.listener.yaw))/Math.max(1,distance)))};
+        const fade=Number.isFinite(maxDistance)?Math.max(0,1-(distance/maxDistance)**2):1;
+        return {volume:fade/(1+(distance/range)**2),pan:Math.max(-.8,Math.min(.8,(dx*Math.cos(this.listener.yaw)-dz*Math.sin(this.listener.yaw))/Math.max(1,distance)))};
     }
     stop(group) { for(const voice of this.active)if(voice.group===group){try{voice.source.stop();}catch{}this.active.delete(voice);} }
 }

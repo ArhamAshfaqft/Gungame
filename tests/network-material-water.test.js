@@ -6,6 +6,15 @@ import {WorldSync} from '../src/multiplayer/WorldSync.js';
 import {LiquidSystem} from '../src/environment/LiquidSystem.js';
 import {liquidState,applyLiquidState} from '../src/multiplayer/LiquidSync.js';
 import {waterImpact,playMaterialEffect} from '../src/multiplayer/MaterialEffects.js';
+import {VillaPanel} from '../src/world/VillaPanel.js';
+
+test('replicated enemy door cues retain their door position and do not replay on late join',()=>{
+ const map={scene:new T.Scene(),materials:{woodPanel:new T.MeshStandardMaterial(),metal:new T.MeshStandardMaterial()},colliders:[],panels:[],emitPanelDebris(){}};
+ const door=new VillaPanel(map,{x:18,y:3.4,z:-8,width:1.2,height:2.3,door:true}),sync=new WorldSync(map.scene,map);
+ door.open=true;const entry=sync.collect().find(e=>e.effect?.kind==='doorOpen');assert.ok(entry);
+ const sounds=[];playMaterialEffect(entry.effect,{playDoorOpen:position=>sounds.push(position.toArray())});
+ assert.deepEqual(sounds,[entry.effect.position]);assert.ok(sounds[0][0]>17);assert.equal(sync.collect().length,0);assert.ok(sync.snapshot().every(e=>!e.effect));
+});
 import {chipBox} from '../src/world/SurfaceGeometry.js';
 
 function fixture(){

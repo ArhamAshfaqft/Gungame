@@ -1,8 +1,11 @@
-# Multiplayer stability update (protocol 5)
+# Multiplayer stability update (protocol 6)
 
-All players must refresh after deployment and create a fresh room. Protocol 5 rooms
+All players must refresh after deployment and create a fresh room. Protocol 6 rooms
 use a separate signaling prefix so clients with incompatible collision rules do not mix.
 
+- Pool-terrace foundations reach the perimeter walls; the pool basin remains open.
+- Door open/close cues use wooden latch/hinge audio at their actual world position,
+  with distance attenuation, stereo direction and a 35 m hearing cutoff.
 - Players use horizontal capsule separation on host and predicted clients. Characters
   do not act as platforms; spectators/dead players and different floors do not block.
 - Stair rail guards follow the slope continuously. They block player capsules while
