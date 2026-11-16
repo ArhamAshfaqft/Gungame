@@ -166,3 +166,23 @@ test('M4 moving peeks stay lateral with stable muzzle direction and unchanged le
   for(const [i,n] of ['LeftFoot','RightFoot'].entries())assert.ok(r.bones[n].getWorldPosition(new T.Vector3()).distanceTo(feet[i])<1e-5);
  }
 });
+
+
+import {applySniperM4Pose} from '../src/studio/SharedM4Grips.js';
+test('shared-sniper M4 peeks attach the visible trigger palm to the actual handle, preserving support grip and limb lengths',()=>{
+ const {r,model}=setup();r.attachAnimatedModel(model,'rifle','primary');r.refinedPeek=true;model.userData.assaultParts={};
+ const library=JSON.parse(readFileSync(new URL('../public/assets/poses/studio-library.json',import.meta.url)));
+ const saved=JSON.stringify(library),lengths=['RightForeArm','RightHand'].map(n=>r.bones[n].position.clone());
+ r.peekPoses=library.peekPoses;
+ for(const clip of ['idle','rifleCrouchIdle','rifleCrouchWalk','rifleCrouchBack','rifleCrouchLeft','rifleCrouchRight','rifleCrouchWalkForwardLeft','rifleCrouchWalkForwardRight'])for(const lean of [-1,-.5,.5,1])for(const adsProgress of [0,1])for(const time of [.1,.4,.7]){
+  r.animator.sample(clip,time);r.animator.actionRemaining=0;
+  r.resolveAnimationPose=()=>applySniperM4Pose(r,library,'primary',adsProgress);
+  r.finishAnimatedPose({lean,adsProgress,isGrounded:true,isCrouching:clip!=='idle',speed:clip.includes('Idle')?0:1.4});
+  const result=r.palmGripDiagnostics.Right,frames=bindPalmGripFrames(r,model,{shared:true});
+  assert.ok(palmWorldPosition(frames.Right.sample).distanceTo(frames.Right.anchor.getWorldPosition(new T.Vector3()))<.003,`${clip}/${lean}/${adsProgress}: visible glove must touch handle`);
+  assert.ok(palmWorldNormal(frames.Right.sample).dot(new T.Vector3(-1,0,0).transformDirection(model.matrixWorld))>.98,'palm faces handle');
+  assert.ok(result.error<.003);assert.ok(r.supportGripMiss<.005);
+  for(const [i,n]of ['RightForeArm','RightHand'].entries())assert.ok(r.bones[n].position.distanceTo(lengths[i])<1e-6);
+ }
+ assert.equal(JSON.stringify(library),saved,'saved artist edits stay intact');
+});

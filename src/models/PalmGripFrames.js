@@ -101,8 +101,8 @@ export function measureM4GripSurfaces(model){
     };
 }
 
-export function bindPalmGripFrames(rig,model){
-    if(rig.animatedSlot!=='assault'||!rig.palmReferences?.rifle)return null;
+export function bindPalmGripFrames(rig,model,{shared=false}={}){
+    if((rig.animatedSlot!=='assault'&&!shared)||!rig.palmReferences?.rifle)return null;
     if(!model.getObjectByName('anchor_grip')||!model.getObjectByName('anchor_fore'))return null;
     rig.palmGripBindings ||= new WeakMap();if(rig.palmGripBindings.has(model))return rig.palmGripBindings.get(model);
     const surfaces=measureM4GripSurfaces(model),bindings={};

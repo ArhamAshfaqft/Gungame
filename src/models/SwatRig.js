@@ -599,10 +599,14 @@ export class SwatRig {
             }
             // Solve the trigger hand after placing the weapon from its unmodified animation
             // anchor, so moving the hand does not drag the weapon along with it.
-            const palmFrames=slot==='assault'&&kind==='rifle'?bindPalmGripFrames(this,model):null;
-            this.palmGripAdjustment=palmFrames?keepPalmTargetsReachable(this,model,palmFrames,{Right:this.thirdPersonRightGrips?.[slot],Left:this.thirdPersonGrips?.[slot]},state.handIK!==false&&this.poseSupportIK!==false&&!['reload','throw','hit'].includes(this.animator.current)):null;
+            const sharedM4Trigger=refinedRiflePeek&&slot==='primary'&&!!model.userData.assaultParts;
+            const palmFrames=(slot==='assault'||sharedM4Trigger)&&kind==='rifle'?bindPalmGripFrames(this,model,{shared:sharedM4Trigger}):null;
+            // Shared-M4 offsets were calibrated as wrist offsets for the sniper.
+            // A measured palm contact must use the physical M4 handle instead.
+            const savedRight=this.thirdPersonRightGrips?.[slot];
+            const right=sharedM4Trigger?{...savedRight,position:[0,0,0],elbowTarget:[0,0,0],contact:null}:savedRight;
+            this.palmGripAdjustment=palmFrames?keepPalmTargetsReachable(this,model,palmFrames,{Right:right,Left:this.thirdPersonGrips?.[slot]},!sharedM4Trigger&&state.handIK!==false&&this.poseSupportIK!==false&&!['reload','throw','hit'].includes(this.animator.current)):null;
             this.palmGripDiagnostics=null;
-            const right = this.thirdPersonRightGrips?.[slot];
             const pinTrigger=this.pinTriggerToWeapon||refinedRiflePeek;
             const basePosition = pinTrigger ? model.localToWorld(rightAnchor) : originalRightPosition;
             const baseRotation = pinTrigger ? model.getWorldQuaternion(new THREE.Quaternion()).multiply(rightBasis) : originalRightRotation;
@@ -633,7 +637,7 @@ export class SwatRig {
                 this.rightGripMiss = this.bones.RightHand.getWorldPosition(new THREE.Vector3()).distanceTo(target);
             }
             const rifleSupport = kind === 'rifle' && state.handIK !== false && this.poseSupportIK !== false && !['reload', 'throw', 'hit'].includes(this.animator.current);
-            if(rifleSupport&&palmFrames&&!this.thirdPersonGrips?.[slot]?.contact){
+            if(rifleSupport&&palmFrames&&!sharedM4Trigger&&!this.thirdPersonGrips?.[slot]?.contact){
                 const support=this.thirdPersonGrips?.[slot];
                 this.placeGuidedShoulder('Left',support,model);this.applyReferenceGripFingers('Left',support);
                 const solved=fitPalmGrip(this,model,'Left',palmFrames.Left,support,state);
