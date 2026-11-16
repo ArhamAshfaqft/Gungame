@@ -186,3 +186,26 @@ test('shared-sniper M4 peeks attach the visible trigger palm to the actual handl
  }
  assert.equal(JSON.stringify(library),saved,'saved artist edits stay intact');
 });
+
+
+test('releasing a single-player crouched M4 peek has no shoulder or grip jump at zero lean',()=>{
+ const {r,model}=setup();r.attachAnimatedModel(model,'rifle','primary');r.refinedPeek=true;model.userData.assaultParts={};
+ const library=JSON.parse(readFileSync(new URL('../public/assets/poses/studio-library.json',import.meta.url)));
+ r.resolveAnimationPose=()=>applySniperM4Pose(r,library,'primary',0);r.peekPoses=library.peekPoses;
+ for(const clip of ['rifleCrouchIdle','rifleCrouchWalk','rifleCrouchLeft','rifleCrouchRight'])for(const sign of [-1,1]){
+  let previous;
+  for(const lean of [...Array.from({length:65},(_,i)=>Math.exp(-9*i/60)),.002,.0011,.0009,.0001,0]){
+   r.animator.sample(clip,.4);r.animator.actionRemaining=0;
+   r.finishAnimatedPose({lean:lean*sign,isCrouching:true,isGrounded:true,speed:clip==='rifleCrouchIdle'?0:1.4});
+   const pose=['RightShoulder','RightArm','RightForeArm','RightHand','LeftShoulder','LeftArm'].map(n=>r.bones[n].getWorldQuaternion(new T.Quaternion()).normalize());
+   const gun=model.getWorldQuaternion(new T.Quaternion());
+   if(previous){
+    const limit=lean>.002?.2:.025;
+    pose.forEach((q,i)=>assert.ok(q.angleTo(previous.pose[i])<limit,`${clip}/${sign}/${lean}: ${i} snaps by ${q.angleTo(previous.pose[i])} as lean approaches zero`));
+    assert.ok(gun.angleTo(previous.gun)<limit,`${clip}: weapon snaps at neutral crouch`);
+   }
+   previous={pose,gun};
+   assert.ok(r.palmGripDiagnostics?.Right?.error<.003,'measured trigger contact stays active through neutral');
+  }
+ }
+});

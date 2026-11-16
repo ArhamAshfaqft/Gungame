@@ -76,7 +76,9 @@ export function applyPeekHands(rig,model,peek){
 // leaning with a rifle, so blend toward the authored ready/aim upper-body poses.
 export function applyCrouchedRiflePeek(rig,state={}){
  if(rig.poseCrouchAssist===false||rig.animatedKind!=='rifle'||!state.isCrouching||state.isGrounded===false||state.isSliding||state.isReloading||rig.animator?.actionRemaining>0)return false;
- const weight=Math.min(1,Math.abs(state.lean||0));
+ // Single-player uses one crouched carry across neutral and peek. The
+ // lateral lean changes continuously without swapping the underlying shoulders.
+ const weight=rig.refinedPeek?1:Math.min(1,Math.abs(state.lean||0));
  const aim=rig.animator?.holdingPoses?.rifle,ready=rig.animator?.holdingPoses?.rifleReady;
  if(!weight||!aim||!ready)return false;
  // The single-player correction shares an upright chest across crouch gaits.
