@@ -9,7 +9,7 @@ import { applyBodyLean } from './BodyLean.js';
 import { samplePeekPose,applyPeekHands,applyPistolReady,applyCrouchedRiflePeek } from '../studio/PeekPoses.js';
 import {ASSAULT_LEFT_GRIP,ASSAULT_RIGHT_GRIP} from './AssaultRifleModel.js';
 import {solveHandContact} from '../studio/HandContact.js';
-import {measurePalm,bindPalmGripFrames,fitPalmGrip,keepPalmTargetsReachable,palmWorldPosition,prepareM4HoldingArms,isM4StandingIdle} from './PalmGripFrames.js';
+import {measurePalm,bindPalmGripFrames,fitPalmGrip,keepPalmTargetsReachable,palmWorldPosition,prepareM4HoldingArms,isM4StandingIdle,preferredElbow,referenceArmFrames} from './PalmGripFrames.js';
 
 import {throwableHandTargets,throwableMotion,poseThrowableBody,firstPersonThrowSample} from './ThrowableMotion.js';
 let assetPromise;
@@ -617,11 +617,14 @@ export class SwatRig {
             }else if (right) {
                 this.placeGuidedShoulder('Right',right,model);
                 const target = basePosition.clone().add(new THREE.Vector3().fromArray(right.position).applyQuaternion(model.getWorldQuaternion(new THREE.Quaternion())));
+                const rotation = baseRotation.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...right.rotation)));
                 if (refinedRiflePeek||right.position.some(value => value !== 0)||(pinTrigger&&(placement?.position.some(n=>n!==0)||placement?.rotation.some(n=>n!==0)||peek?.weapon.position.some(n=>n!==0)||peek?.weapon.rotation.some(n=>n!==0)))||right.shoulder?.some(n=>n!==0)||right.elbowTarget?.some(n=>n!==0)) {
                     this.solveIK(this.bones.RightArm, this.bones.RightForeArm, this.bones.RightHand, target,
-                        this.guidedElbowPole('Right',right,model));
+                        refinedRiflePeek?preferredElbow(this,'Right',target,rotation,right,state):this.guidedElbowPole('Right',right,model));
                 }
-                const rotation = baseRotation.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...right.rotation)));
+                // Match the bent authored elbow frame, preserving the solved joint
+                // positions and grip instead of concentrating axial roll at the sleeve.
+                if(refinedRiflePeek)referenceArmFrames(this,'Right',rotation,state);
                 this.setWorldRotation(this.bones.RightHand, rotation);
                 for (const finger of ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky']) for (let joint = 1; joint <= 3; joint++) this.rotate(`RightHand${finger}${joint}`, right.fingers[finger][joint - 1]);
                 this.applyManualHandJoints('Right',right);

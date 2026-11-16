@@ -179,7 +179,7 @@ export function prepareM4HoldingArms(rig,state={}){
         rig.object.updateMatrixWorld(true);
     }
 }
-function preferredElbow(rig,side,target,rotation,guide,state){
+export function preferredElbow(rig,side,target,rotation,guide,state){
     const hand=rig.bones[side+'Hand'],lower=rig.bones[side+'ForeArm'],upper=rig.bones[side+'Arm'];
     const length=lower.getWorldPosition(v()).distanceTo(hand.getWorldPosition(v()));
     const forearmFrame=rotation.clone().multiply(referenceJoint(rig,side,'Hand',state).invert());
@@ -200,7 +200,7 @@ function boundedRoll(current,desired,axis,limit){
     angle=T.MathUtils.clamp(angle,-limit,limit);
     return {rotation:q().setFromAxisAngle(axis,angle).multiply(current),angle};
 }
-function referenceArmFrames(rig,side,rotation,state){
+export function referenceArmFrames(rig,side,rotation,state){
     const reference=name=>referenceJoint(rig,side,name,state);
     const upper=rig.bones[side+'Arm'],lower=rig.bones[side+'ForeArm'],hand=rig.bones[side+'Hand'];
     const lowerAxis=hand.getWorldPosition(v()).sub(lower.getWorldPosition(v())).normalize();
