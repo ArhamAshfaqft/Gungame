@@ -209,3 +209,20 @@ test('releasing a single-player crouched M4 peek has no shoulder or grip jump at
   }
  }
 });
+
+
+test('single-player M4 standing and crouching blend shoulders and grip throughout both posture transitions',()=>{
+ const library=JSON.parse(readFileSync(new URL('../public/assets/poses/studio-library.json',import.meta.url)));
+ for(const rate of [30,60,144])for(const speed of [0,1.4]){
+  const {r,model}=setup();r.attachAnimatedModel(model,'rifle','primary');r.refinedPeek=true;model.userData.assaultParts={};
+  r.resolveAnimationPose=()=>applySniperM4Pose(r,library,'primary',0);r.peekPoses=library.peekPoses;
+  let previous;
+  for(const crouch of [false,true,false,true,false])for(let frame=0;frame<Math.ceil(rate*1.4);frame++){
+   r.update(1/rate,{equipment:'rifle',isGrounded:true,isCrouching:crouch,speed,forward:1,lean:0,adsProgress:0});
+   const pose=['RightShoulder','LeftShoulder','RightArm','LeftArm','RightForeArm'].map(n=>r.bones[n].getWorldQuaternion(new T.Quaternion()).normalize());
+   if(previous)pose.forEach((q,i)=>assert.ok(q.angleTo(previous[i])<.3*60/rate,`${rate}/${speed}/${crouch}/${frame}: ${i} snaps by ${q.angleTo(previous[i])}`));
+   previous=pose;
+   assert.ok(r.palmGripDiagnostics?.Right?.error<.003,'trigger palm stays attached during posture change');
+  }
+ }
+});

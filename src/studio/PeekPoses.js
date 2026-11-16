@@ -75,9 +75,10 @@ export function applyPeekHands(rig,model,peek){
 // The crouch clip supplies hips and legs. Its folded arm pose is unsuitable for
 // leaning with a rifle, so blend toward the authored ready/aim upper-body poses.
 export function applyCrouchedRiflePeek(rig,state={}){
- if(rig.poseCrouchAssist===false||rig.animatedKind!=='rifle'||!state.isCrouching||state.isGrounded===false||state.isSliding||state.isReloading||rig.animator?.actionRemaining>0)return false;
- // Single-player uses one crouched carry across neutral and peek. The
- // lateral lean changes continuously without swapping the underlying shoulders.
+ const postureAction=rig.refinedPeek&&/^rifle(StandToCrouch|CrouchToStand)$/.test(rig.animator?.current||'');
+ if(rig.poseCrouchAssist===false||rig.animatedKind!=='rifle'||(!state.isCrouching&&!rig.refinedPeek)||state.isGrounded===false||state.isSliding||state.isReloading||(rig.refinedPeek&&state.isSprinting)||(rig.animator?.actionRemaining>0&&!postureAction))return false;
+ // Single-player keeps one upper-body carry through stand/crouch changes.
+ // Authored posture clips retain the pelvis, legs and height transition.
  const weight=rig.refinedPeek?1:Math.min(1,Math.abs(state.lean||0));
  const aim=rig.animator?.holdingPoses?.rifle,ready=rig.animator?.holdingPoses?.rifleReady;
  if(!weight||!aim||!ready)return false;
