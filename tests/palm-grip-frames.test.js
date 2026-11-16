@@ -226,3 +226,34 @@ test('single-player M4 standing and crouching blend shoulders and grip throughou
   }
  }
 });
+
+
+import {applyFullBodyPose} from '../src/studio/FullBodyPoses.js';
+test('settled standing preserves the original upper body exactly instead of applying crouch corrections',()=>{
+ const library=JSON.parse(readFileSync(new URL('../public/assets/poses/studio-library.json',import.meta.url)));
+ for(const sharedM4 of [false,true]){
+  const a=setup(),b=setup();
+  for(const {r,model}of [a,b]){r.attachAnimatedModel(model,'rifle','primary');r.refinedPeek=true;if(sharedM4)model.userData.assaultParts={};r.peekPoses=library.peekPoses;}
+  for(const clip of ['idle','rifleReadyIdle','walk','runBack'])for(const adsProgress of [0,1]){
+   for(const {r}of [a,b]){
+    r.animator.sample(clip,.4);r.animator.actionRemaining=0;
+    r.resolveAnimationPose=()=>{const result=(sharedM4?applySniperM4Pose:applyFullBodyPose)(r,library,'primary',adsProgress);if(r===b.r)r.poseCrouchAssist=false;return result;};
+    r.finishAnimatedPose({isGrounded:true,isCrouching:false,lean:0,adsProgress});
+   }
+   for(const name of ['Spine','Spine1','Spine2','Neck','Head','RightShoulder','LeftShoulder','RightArm','LeftArm','RightForeArm','LeftForeArm','RightHand','LeftHand']){
+    const qa=a.r.bones[name].getWorldQuaternion(new T.Quaternion()).normalize(),qb=b.r.bones[name].getWorldQuaternion(new T.Quaternion()).normalize();
+    assert.ok(qa.angleTo(qb)<1e-6,`${clip}/${sharedM4}/${name}: standing must not inherit crouched arm/spine correction`);
+   }
+   assert.ok(a.model.position.distanceTo(b.model.position)<1e-6);assert.ok(a.model.quaternion.clone().normalize().angleTo(b.model.quaternion.clone().normalize())<1e-6);
+  }
+ }
+});
+
+
+test('cached standing carry does not override crouched reload arm animation',()=>{
+ const a=setup(),b=setup(),library=JSON.parse(readFileSync(new URL('../public/assets/poses/studio-library.json',import.meta.url)));
+ for(const {r,model}of [a,b]){r.attachAnimatedModel(model,'rifle','primary');r.refinedPeek=true;model.userData.assaultParts={};r.resolveAnimationPose=()=>applySniperM4Pose(r,library,'primary',0,{clip:r.animator.current});}
+ a.r.animator.sample('idle',.4);a.r.finishAnimatedPose({isCrouching:false,isGrounded:true});assert.ok(a.r.standingCarrySource);
+ for(const {r}of [a,b]){r.animator.sample('reload',.4);r.finishAnimatedPose({isCrouching:true,isGrounded:true,isReloading:true});}
+ for(const name of ['LeftShoulder','RightShoulder','LeftArm','RightArm','LeftForeArm','RightForeArm','LeftHand','RightHand'])assert.ok(a.r.bones[name].getWorldQuaternion(new T.Quaternion()).normalize().angleTo(b.r.bones[name].getWorldQuaternion(new T.Quaternion()).normalize())<1e-6,name+' must retain reload motion');
+});

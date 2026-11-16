@@ -76,10 +76,21 @@ export function applyPeekHands(rig,model,peek){
 // leaning with a rifle, so blend toward the authored ready/aim upper-body poses.
 export function applyCrouchedRiflePeek(rig,state={}){
  const postureAction=rig.refinedPeek&&/^rifle(StandToCrouch|CrouchToStand)$/.test(rig.animator?.current||'');
- if(rig.poseCrouchAssist===false||rig.animatedKind!=='rifle'||(!state.isCrouching&&!rig.refinedPeek)||state.isGrounded===false||state.isSliding||state.isReloading||(rig.refinedPeek&&state.isSprinting)||(rig.animator?.actionRemaining>0&&!postureAction))return false;
+ let carry=state.isCrouching?1:0;
+ if(postureAction){
+  const action=rig.animator.actions.get(rig.animator.current),duration=rig.animator.clips.get(rig.animator.current).duration;
+  const progress=THREE.MathUtils.smoothstep(action.time/duration,0,1);
+  carry=rig.animator.current==='rifleStandToCrouch'?progress:1-progress;
+ }
+ if(rig.refinedPeek){
+  if(!postureAction&&state.delta>0)carry=THREE.MathUtils.damp(rig.crouchCarryWeight??carry,carry,8,state.delta);
+  if(carry<.001)carry=0;
+  rig.crouchCarryWeight=carry;
+ }
+ if(rig.poseCrouchAssist===false||rig.animatedKind!=='rifle'||(!state.isCrouching&&!postureAction&&!(rig.refinedPeek&&carry>0))||state.isGrounded===false||state.isSliding||state.isReloading||(rig.refinedPeek&&state.isSprinting)||(rig.animator?.actionRemaining>0&&!postureAction))return false;
  // Single-player keeps one upper-body carry through stand/crouch changes.
  // Authored posture clips retain the pelvis, legs and height transition.
- const weight=rig.refinedPeek?1:Math.min(1,Math.abs(state.lean||0));
+ const weight=rig.refinedPeek?carry:Math.min(1,Math.abs(state.lean||0));
  const aim=rig.animator?.holdingPoses?.rifle,ready=rig.animator?.holdingPoses?.rifleReady;
  if(!weight||!aim||!ready)return false;
  // The single-player correction shares an upright chest across crouch gaits.
@@ -88,7 +99,7 @@ export function applyCrouchedRiflePeek(rig,state={}){
  if((rig.refinedPeek||/^rifleCrouch(Left|Right)$/.test(rig.animator.current))&&torso){
   rig.object.updateMatrixWorld(true);
   const root=rig.object.getWorldQuaternion(new THREE.Quaternion());
-  const torsoWeight=rig.refinedPeek?Math.min(1,weight*2):weight;
+  const torsoWeight=weight;
   const targets=new Map([...torso].map(([name,rotation])=>[name,rig.bones[name].getWorldQuaternion(new THREE.Quaternion()).slerp(root.clone().multiply(rotation),torsoWeight)]));
   for(const [name,target] of targets){rig.setWorldRotation(rig.bones[name],target);rig.bones[name].updateMatrixWorld(true);}
  }
