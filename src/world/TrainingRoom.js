@@ -493,7 +493,7 @@ export class TrainingRoom {
         }
         if (!this.canInteract || this.door.destroyed) return false;
         this.door.open = !this.door.open;
-        soundEngine.playDoorOpen(this.doorMesh.getWorldPosition(new THREE.Vector3()));
+        soundEngine.playDoorOpen(this.doorMesh.getWorldPosition(new THREE.Vector3()),this.door.open);
         return true;
     }
 }

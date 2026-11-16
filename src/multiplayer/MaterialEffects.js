@@ -6,7 +6,7 @@ export function playMaterialEffect(effect,engine=soundEngine){
  if(effect.kind==='glassBreak'){
   if(!engine.playSample('glassBreak',{volume:.6,position}))engine.playGlassBreak();
  }else if(effect.kind==='doorBreak')engine.playDoorBreak();
- else if(effect.kind==='doorOpen')engine.playDoorOpen(position);
+ else if(effect.kind==='doorOpen')engine.playDoorOpen(position,effect.opened??true);
 }
 export function waterImpact(mesh,impact){
  if(impact.surface!=='water')return false;

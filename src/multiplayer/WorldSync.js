@@ -23,7 +23,7 @@ export class WorldSync{
     const kind=surface==='glass'||surface==='ceramic'||m.userData.breakableLight?'glassBreak':panel?.isDoor?'doorBreak':null;
     if(kind)entry.effect={kind,id:m.userData.damageRoot?.uuid||id,position:new T.Vector3().setFromMatrixPosition(m.matrixWorld).toArray()};
    }
-   if(!entry.effect&&old&&old.opened!==now.opened&&now.visible&&(panel?.isDoor||m===this.room.doorMesh))entry.effect={kind:'doorOpen',id,position:new T.Vector3().setFromMatrixPosition(m.matrixWorld).toArray()};
+   if(!entry.effect&&old&&old.opened!==now.opened&&now.visible&&(panel?.isDoor||m===this.room.doorMesh))entry.effect={kind:'doorOpen',id,opened:now.opened,position:new T.Vector3().setFromMatrixPosition(m.matrixWorld).toArray()};
    if(!old)entry.create={color:material.color?.getHex()??0xaaaaaa,surface:m.userData.physicalMaterial||m.userData.surface||'wood',name:m.name};
    if(panel?.pieces){
     entry.panelMotion={handleVisible:!!panel.handle?.visible&&m.visible&&!panel.destroyed,destroyed:panel.destroyed,detached:!!panel.detachedEnvironment,open:panel.open,openAmount:panel.openAmount,group:panel.group.matrixWorld.toArray()};

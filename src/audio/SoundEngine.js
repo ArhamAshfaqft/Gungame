@@ -1,7 +1,7 @@
 import {remoteFootstepMix} from '../multiplayer/Footsteps.js';
 // Web Audio engine: recorded boot footsteps and procedural combat effects.
 import { CombatAudio } from './CombatAudio.js';
-import {woodenDoorBuffer} from './WoodenDoor.js';
+import {loadWoodenDoors} from './WoodenDoor.js';
 
 class SoundEngine {
     constructor() {
@@ -28,6 +28,7 @@ class SoundEngine {
         this.initialized = true;
         this.loadFootsteps();
         this.combat.load();
+        loadWoodenDoors(this.combat);
         this.loadWaterSounds();
 
         if (this.ctx.state === 'suspended') {
@@ -482,12 +483,17 @@ class SoundEngine {
         setTimeout(() => this.playWoodHit(), 180);
     }
 
-    playDoorOpen(position=null) {
+    playDoorOpen(position=null,opened=true) {
         if(this.isMuted)return;
-        this.ensureContext();
-        if (!this.ctx) return;
-        if(!this.combat.buffers.has('woodenDoor'))this.combat.buffers.set('woodenDoor',woodenDoorBuffer(this.ctx));
-        this.playSample('woodenDoor',{volume:.65,rate:.97+Math.random()*.06,position,range:10,maxDistance:35});
+        this.ensureContext();if(!this.ctx)return;
+        const key=opened?'woodenDoor-open':'woodenDoor-close';
+        const options={volume:.65,rate:.98+Math.random()*.04,position,range:10,maxDistance:35};
+        if(this.combat.buffers.has(key)){this.playSample(key,options);return;}
+        const started=this.ctx.currentTime;
+        loadWoodenDoors(this.combat).then(()=>{
+            // Skip delayed playback after a slow download instead of sounding an old action.
+            if(this.ctx.currentTime-started<.4)this.playSample(key,options);
+        });
     }
 
     // Fast Tactical Movement Audio

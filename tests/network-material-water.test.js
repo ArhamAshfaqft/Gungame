@@ -12,8 +12,10 @@ test('replicated enemy door cues retain their door position and do not replay on
  const map={scene:new T.Scene(),materials:{woodPanel:new T.MeshStandardMaterial(),metal:new T.MeshStandardMaterial()},colliders:[],panels:[],emitPanelDebris(){}};
  const door=new VillaPanel(map,{x:18,y:3.4,z:-8,width:1.2,height:2.3,door:true}),sync=new WorldSync(map.scene,map);
  door.open=true;const entry=sync.collect().find(e=>e.effect?.kind==='doorOpen');assert.ok(entry);
- const sounds=[];playMaterialEffect(entry.effect,{playDoorOpen:position=>sounds.push(position.toArray())});
- assert.deepEqual(sounds,[entry.effect.position]);assert.ok(sounds[0][0]>17);assert.equal(sync.collect().length,0);assert.ok(sync.snapshot().every(e=>!e.effect));
+ const sounds=[];playMaterialEffect(entry.effect,{playDoorOpen:(position,opened)=>sounds.push({position:position.toArray(),opened})});
+ assert.deepEqual(sounds,[{position:entry.effect.position,opened:true}]);assert.ok(sounds[0].position[0]>17);assert.equal(sync.collect().length,0);assert.ok(sync.snapshot().every(e=>!e.effect));
+ door.open=false;const closed=sync.collect().find(e=>e.effect?.kind==='doorOpen');assert.equal(closed.effect.opened,false);
+ playMaterialEffect(closed.effect,{playDoorOpen:(position,opened)=>assert.equal(opened,false)});
 });
 import {chipBox} from '../src/world/SurfaceGeometry.js';
 
