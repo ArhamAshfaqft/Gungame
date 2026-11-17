@@ -75,32 +75,16 @@ export function applyPeekHands(rig,model,peek){
 // The crouch clip supplies hips and legs. Its folded arm pose is unsuitable for
 // leaning with a rifle, so blend toward the authored ready/aim upper-body poses.
 export function applyCrouchedRiflePeek(rig,state={}){
- const postureAction=rig.refinedPeek&&/^rifle(StandToCrouch|CrouchToStand)$/.test(rig.animator?.current||'');
- let carry=state.isCrouching?1:0;
- if(postureAction){
-  const action=rig.animator.actions.get(rig.animator.current),duration=rig.animator.clips.get(rig.animator.current).duration;
-  const progress=THREE.MathUtils.smoothstep(action.time/duration,0,1);
-  carry=rig.animator.current==='rifleStandToCrouch'?progress:1-progress;
- }
- if(rig.refinedPeek){
-  if(!postureAction&&state.delta>0)carry=THREE.MathUtils.damp(rig.crouchCarryWeight??carry,carry,8,state.delta);
-  if(carry<.001)carry=0;
-  rig.crouchCarryWeight=carry;
- }
- if(rig.poseCrouchAssist===false||rig.animatedKind!=='rifle'||(!state.isCrouching&&!postureAction&&!(rig.refinedPeek&&carry>0))||state.isGrounded===false||state.isSliding||state.isReloading||(rig.refinedPeek&&state.isSprinting)||(rig.animator?.actionRemaining>0&&!postureAction))return false;
- // Single-player keeps one upper-body carry through stand/crouch changes.
- // Authored posture clips retain the pelvis, legs and height transition.
- const weight=rig.refinedPeek?carry:Math.min(1,Math.abs(state.lean||0));
+ if(rig.poseCrouchAssist===false||rig.animatedKind!=='rifle'||!state.isCrouching||state.isGrounded===false||state.isSliding||state.isReloading||rig.animator?.actionRemaining>0)return false;
+ const weight=Math.min(1,Math.abs(state.lean||0));
  const aim=rig.animator?.holdingPoses?.rifle,ready=rig.animator?.holdingPoses?.rifleReady;
  if(!weight||!aim||!ready)return false;
- // The single-player correction shares an upright chest across crouch gaits.
- // Other controllers retain the existing strafe-only assistance.
- const torso=rig.refinedPeek?rig.animator.uprightPeekTorso:rig.animator.crouchPeekTorso;
- if((rig.refinedPeek||/^rifleCrouch(Left|Right)$/.test(rig.animator.current))&&torso){
+ // Only correct the crouched sideways clips; stationary peek and forward
+ // locomotion retain their authored torso and the saved Studio adjustments.
+ if(/^rifleCrouch(Left|Right)$/.test(rig.animator.current)&&rig.animator.crouchPeekTorso){
   rig.object.updateMatrixWorld(true);
   const root=rig.object.getWorldQuaternion(new THREE.Quaternion());
-  const torsoWeight=weight;
-  const targets=new Map([...torso].map(([name,rotation])=>[name,rig.bones[name].getWorldQuaternion(new THREE.Quaternion()).slerp(root.clone().multiply(rotation),torsoWeight)]));
+  const targets=new Map([...rig.animator.crouchPeekTorso].map(([name,rotation])=>[name,rig.bones[name].getWorldQuaternion(new THREE.Quaternion()).slerp(root.clone().multiply(rotation),weight)]));
   for(const [name,target] of targets){rig.setWorldRotation(rig.bones[name],target);rig.bones[name].updateMatrixWorld(true);}
  }
  const ads=THREE.MathUtils.clamp(state.adsProgress??(state.isAiming?1:0),0,1);

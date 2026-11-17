@@ -1,16 +1,14 @@
-import {seatSniperStock} from './SniperStock.js';
 import {pistolGripFrame,fitPistolPalm,orientPistolSleeve} from './PistolGrip.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { ShooterAnimator, loadShooterPack, loadPistolPack } from './ShooterAnimator.js';
 import { readLibrary, POSE_STORAGE_KEY } from '../studio/PoseLibrary.js';
-import {fitWeaponReach} from './WeaponGripFit.js';
 import { applyBodyLean } from './BodyLean.js';
 import { samplePeekPose,applyPeekHands,applyPistolReady,applyCrouchedRiflePeek } from '../studio/PeekPoses.js';
 import {ASSAULT_LEFT_GRIP,ASSAULT_RIGHT_GRIP} from './AssaultRifleModel.js';
 import {solveHandContact} from '../studio/HandContact.js';
-import {measurePalm,bindPalmGripFrames,fitPalmGrip,keepPalmTargetsReachable,palmWorldPosition,prepareM4HoldingArms,isM4StandingIdle,preferredElbow,referenceArmFrames,isRefinedSniper,prepareSniperHoldingArms} from './PalmGripFrames.js';
+import {measurePalm,bindPalmGripFrames,fitPalmGrip,keepPalmTargetsReachable,palmWorldPosition,prepareM4HoldingArms,isM4StandingIdle} from './PalmGripFrames.js';
 
 import {throwableHandTargets,throwableMotion,poseThrowableBody,firstPersonThrowSample} from './ThrowableMotion.js';
 let assetPromise;
@@ -531,35 +529,9 @@ export class SwatRig {
             this.studioInputPose ||= new Map(Object.values(this.bones).map(bone=>[bone,{position:new THREE.Vector3(),rotation:new THREE.Quaternion()}]));
             for(const [bone,pose] of this.studioInputPose){pose.position.copy(bone.position);pose.rotation.copy(bone.quaternion);}
         }
-        if(this.refinedPeek&&this.animatedKind==='rifle'&&!state.isReloading&&!state.isSliding&&!state.isSprinting&&state.isGrounded!==false&&!/reload|throw|hit/.test(this.animator.current||'')){
-            const posture=/^rifle(StandToCrouch|CrouchToStand)$/.test(this.animator.current||'');
-            const carryTransition=posture||state.isCrouching||(this.crouchCarryWeight||0)>.001;
-            this.object.updateMatrixWorld(true);
-            const root=this.object.getWorldQuaternion(new THREE.Quaternion());
-            if(this.previousCarryTransition&&!carryTransition)this.standingCarryRelease=1;
-            this.previousCarryTransition=carryTransition;
-            if(!carryTransition&&this.standingCarryRelease>.001&&state.delta>0&&this.standingCarrySource){
-                this.standingCarryRelease=THREE.MathUtils.damp(this.standingCarryRelease,0,8,state.delta);
-                for(const [name,rotation]of this.standingCarrySource){
-                    const bone=this.bones[name],current=bone.getWorldQuaternion(new THREE.Quaternion());
-                    this.setWorldRotation(bone,current.slerp(root.clone().multiply(rotation),this.standingCarryRelease));
-                }
-            }else if(!carryTransition){
-                this.standingCarrySource=new Map(Object.entries(this.bones).filter(([name])=>/^(Spine\d*|Neck|Head|LeftShoulder|RightShoulder|LeftArm|RightArm|LeftForeArm|RightForeArm|LeftHand.*|RightHand.*)$/.test(name)).map(([name,bone])=>[name,root.clone().invert().multiply(bone.getWorldQuaternion(new THREE.Quaternion()))]));
-            }else if(carryTransition&&this.standingCarrySource){
-                // Posture clips supply the legs and hips. Keep their unrelated
-                // arm motion out of the blend between the two holding poses.
-                for(const [name,rotation]of this.standingCarrySource)this.setWorldRotation(this.bones[name],root.clone().multiply(rotation));
-            }
-        }
         this.resolveAnimationPose?.(state);
         prepareM4HoldingArms(this,state);
-        // Keep hand constraints through neutral: a lean threshold would switch
-        // wrist/arm solvers midway through the camera's smooth return.
-        const refinedRifleHolding=this.refinedPeek&&this.animatedKind==='rifle'&&!state.isReloading&&!/reload|throw|hit/.test(this.animator.current);
         const crouchedRiflePeek=applyCrouchedRiflePeek(this,state);
-        const sniperHolding=isRefinedSniper(this,state);
-        prepareSniperHoldingArms(this,state);
         const peek=samplePeekPose(this.peekPoses,this.animatedSlot || 'primary',state,this.peekTimelines);
         if(this.animatedKind==='pistol'&&state.isCrouching)applyPistolReady(this,state);
         applyBodyLean(this,{...state,lean:(state.lean||0)*(peek?.strength??1)});
@@ -581,7 +553,7 @@ export class SwatRig {
                 : kind === 'pistol' ? new THREE.Vector3(0.025, -0.09, 0.02) : model.userData.triggerGrip || RIGHT_GRIP;
             this.placeModelInHand(model, grip, kind);
             const m4Holding=this.animatedSlot==='assault'&&this.palmReferences?.rifle&&!state.isReloading&&!['reload','throw','hit'].includes(this.animator.current);
-            if((crouchedRiflePeek&&!sniperHolding)||m4Holding){
+            if(crouchedRiflePeek||m4Holding){
                 // Turn the complete arm chains together, keeping the authored wrist
                 // bend intact while cancelling the crouch/lean's upward muzzle tilt.
                 const forward=new THREE.Vector3(0,0,-1).applyQuaternion(model.getWorldQuaternion(new THREE.Quaternion()));
@@ -589,7 +561,6 @@ export class SwatRig {
                 const desired=new THREE.Vector3(0,-(isM4StandingIdle(this,state)?.035:m4Holding?.25:.12)*(1-ads),1).normalize().applyQuaternion(this.object.getWorldQuaternion(new THREE.Quaternion()));
                 desired.applyAxisAngle(new THREE.Vector3(1,0,0).applyQuaternion(this.object.getWorldQuaternion(new THREE.Quaternion())),-(state.aimPitch||0));
                 const correction=new THREE.Quaternion().setFromUnitVectors(forward,desired);
-                if(refinedRifleHolding&&!m4Holding)correction.slerp(new THREE.Quaternion(),1-(this.crouchCarryWeight??1));
                 for(const side of ['Right','Left']){
                     const shoulder=this.bones[side+'Shoulder'];
                     this.setWorldRotation(shoulder,correction.clone().multiply(shoulder.getWorldQuaternion(new THREE.Quaternion())));
@@ -621,23 +592,14 @@ export class SwatRig {
                 model.quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...peek.weapon.rotation)));
                 model.updateMatrixWorld(true);
             }
-            if(refinedRifleHolding){
-                fitWeaponReach(this,model,rightAnchor,model.userData.supportGrip||BODY_SUPPORT_GRIP,this.thirdPersonRightGrips?.[slot],this.thirdPersonGrips?.[slot]);
-            }
             // Solve the trigger hand after placing the weapon from its unmodified animation
             // anchor, so moving the hand does not drag the weapon along with it.
-            const sharedM4Trigger=refinedRifleHolding&&slot==='primary'&&!!model.userData.assaultParts;
-            const palmFrames=(slot==='assault'||sharedM4Trigger||sniperHolding)&&kind==='rifle'?bindPalmGripFrames(this,model,{shared:sharedM4Trigger}):null;
-            // Shared-M4 offsets were calibrated as wrist offsets for the sniper.
-            // A measured palm contact must use the physical M4 handle instead.
-            const savedRight=this.thirdPersonRightGrips?.[slot];
-            const right=(sharedM4Trigger||sniperHolding)?{...savedRight,position:[0,0,0],elbowTarget:[0,0,0],contact:null}:savedRight;
-            this.palmGripAdjustment=palmFrames?keepPalmTargetsReachable(this,model,palmFrames,{Right:right,Left:sniperHolding?null:this.thirdPersonGrips?.[slot]},!sharedM4Trigger&&state.handIK!==false&&this.poseSupportIK!==false&&!['reload','throw','hit'].includes(this.animator.current)):null;
-            if(sniperHolding&&palmFrames)seatSniperStock(this,model,state,palmFrames);
+            const palmFrames=slot==='assault'&&kind==='rifle'?bindPalmGripFrames(this,model):null;
+            this.palmGripAdjustment=palmFrames?keepPalmTargetsReachable(this,model,palmFrames,{Right:this.thirdPersonRightGrips?.[slot],Left:this.thirdPersonGrips?.[slot]},state.handIK!==false&&this.poseSupportIK!==false&&!['reload','throw','hit'].includes(this.animator.current)):null;
             this.palmGripDiagnostics=null;
-            const pinTrigger=this.pinTriggerToWeapon||refinedRifleHolding;
-            const basePosition = pinTrigger ? model.localToWorld(rightAnchor) : originalRightPosition;
-            const baseRotation = pinTrigger ? model.getWorldQuaternion(new THREE.Quaternion()).multiply(rightBasis) : originalRightRotation;
+            const right = this.thirdPersonRightGrips?.[slot];
+            const basePosition = this.pinTriggerToWeapon ? model.localToWorld(rightAnchor) : originalRightPosition;
+            const baseRotation = this.pinTriggerToWeapon ? model.getWorldQuaternion(new THREE.Quaternion()).multiply(rightBasis) : originalRightRotation;
             this.rightGripBase = { position: basePosition.clone(), quaternion: baseRotation.clone() };
             if(palmFrames&&!right?.contact){
                 this.placeGuidedShoulder('Right',right,model);
@@ -649,14 +611,11 @@ export class SwatRig {
             }else if (right) {
                 this.placeGuidedShoulder('Right',right,model);
                 const target = basePosition.clone().add(new THREE.Vector3().fromArray(right.position).applyQuaternion(model.getWorldQuaternion(new THREE.Quaternion())));
-                const rotation = baseRotation.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...right.rotation)));
-                if (refinedRifleHolding||right.position.some(value => value !== 0)||(pinTrigger&&(placement?.position.some(n=>n!==0)||placement?.rotation.some(n=>n!==0)||peek?.weapon.position.some(n=>n!==0)||peek?.weapon.rotation.some(n=>n!==0)))||right.shoulder?.some(n=>n!==0)||right.elbowTarget?.some(n=>n!==0)) {
+                if (right.position.some(value => value !== 0)||(this.pinTriggerToWeapon&&(placement?.position.some(n=>n!==0)||placement?.rotation.some(n=>n!==0)||peek?.weapon.position.some(n=>n!==0)||peek?.weapon.rotation.some(n=>n!==0)))||right.shoulder?.some(n=>n!==0)||right.elbowTarget?.some(n=>n!==0)) {
                     this.solveIK(this.bones.RightArm, this.bones.RightForeArm, this.bones.RightHand, target,
-                        refinedRifleHolding?preferredElbow(this,'Right',target,rotation,right,state):this.guidedElbowPole('Right',right,model));
+                        this.guidedElbowPole('Right',right,model));
                 }
-                // Match the bent authored elbow frame, preserving the solved joint
-                // positions and grip instead of concentrating axial roll at the sleeve.
-                if(refinedRifleHolding)referenceArmFrames(this,'Right',rotation,state);
+                const rotation = baseRotation.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(...right.rotation)));
                 this.setWorldRotation(this.bones.RightHand, rotation);
                 for (const finger of ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky']) for (let joint = 1; joint <= 3; joint++) this.rotate(`RightHand${finger}${joint}`, right.fingers[finger][joint - 1]);
                 this.applyManualHandJoints('Right',right);
@@ -665,8 +624,8 @@ export class SwatRig {
                 this.rightGripMiss = this.bones.RightHand.getWorldPosition(new THREE.Vector3()).distanceTo(target);
             }
             const rifleSupport = kind === 'rifle' && state.handIK !== false && this.poseSupportIK !== false && !['reload', 'throw', 'hit'].includes(this.animator.current);
-            if(rifleSupport&&palmFrames&&!sharedM4Trigger&&!this.thirdPersonGrips?.[slot]?.contact){
-                const support=sniperHolding?null:this.thirdPersonGrips?.[slot];
+            if(rifleSupport&&palmFrames&&!this.thirdPersonGrips?.[slot]?.contact){
+                const support=this.thirdPersonGrips?.[slot];
                 this.placeGuidedShoulder('Left',support,model);this.applyReferenceGripFingers('Left',support);
                 const solved=fitPalmGrip(this,model,'Left',palmFrames.Left,support,state);
                 this.applyManualHandJoints('Left',support);
@@ -678,9 +637,9 @@ export class SwatRig {
                 const local = (model.userData.supportGrip||BODY_SUPPORT_GRIP).clone();
                 if (support) local.add(new THREE.Vector3().fromArray(support.position));
                 const target = model.localToWorld(local);
-                const standingPole=this.object.localToWorld(new THREE.Vector3(0.65,1.03,0.16));
-                const crouchingPole=this.bones.LeftArm.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(.28,-.22,.18).applyQuaternion(this.object.getWorldQuaternion(new THREE.Quaternion())));
-                const pole=refinedRifleHolding?standingPole.lerp(crouchingPole,this.crouchCarryWeight??(state.isCrouching?1:0)):(crouchedRiflePeek?crouchingPole:standingPole);
+                const pole = crouchedRiflePeek
+                    ? this.bones.LeftArm.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(.28,-.22,.18).applyQuaternion(this.object.getWorldQuaternion(new THREE.Quaternion())))
+                    : this.object.localToWorld(new THREE.Vector3(0.65, 1.03, 0.16));
                 if(support?.elbowTarget)pole.add(new THREE.Vector3().fromArray(support.elbowTarget).applyQuaternion(this.object.getWorldQuaternion(new THREE.Quaternion())));
                 this.solveIK(this.bones.LeftArm, this.bones.LeftForeArm, this.bones.LeftHand, target, pole);
                 const rotation = model.getWorldQuaternion(new THREE.Quaternion()).multiply(this.animationSupportGrips?.rifle || gripRotation.Left);

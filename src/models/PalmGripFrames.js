@@ -1,5 +1,4 @@
 import * as T from 'three';
-import {torsoEnvelope} from './ArmClearance.js';
 
 const v=()=>new T.Vector3();
 const q=()=>new T.Quaternion();
@@ -82,7 +81,7 @@ function gunSurface(model,origin,direction){
     model.updateMatrixWorld(true);const ray=new T.Raycaster(model.localToWorld(origin.clone()),direction.clone().transformDirection(model.matrixWorld));
     const meshes=[];model.traverse(n=>{if(n.isMesh&&n.visible&&!/Holo|muzzle/i.test(n.name))meshes.push(n);});
     const hit=ray.intersectObjects(meshes,false)[0];
-    if(!hit)throw Error('Weapon grip surface was not found.');
+    if(!hit)throw Error('M4 grip surface was not found.');
     return model.worldToLocal(hit.point.clone());
 }
 
@@ -102,15 +101,11 @@ export function measureM4GripSurfaces(model){
     };
 }
 
-export function bindPalmGripFrames(rig,model,{shared=false}={}){
-    const sniper=isRefinedSniper(rig);
-    if((rig.animatedSlot!=='assault'&&!shared&&!sniper)||!rig.palmReferences?.rifle)return null;
-    if(!sniper&&(!model.getObjectByName('anchor_grip')||!model.getObjectByName('anchor_fore')))return null;
+export function bindPalmGripFrames(rig,model){
+    if(rig.animatedSlot!=='assault'||!rig.palmReferences?.rifle)return null;
+    if(!model.getObjectByName('anchor_grip')||!model.getObjectByName('anchor_fore'))return null;
     rig.palmGripBindings ||= new WeakMap();if(rig.palmGripBindings.has(model))return rig.palmGripBindings.get(model);
-    const surfaces=isRefinedSniper(rig)?{
-        Right:{point:gunSurface(model,new T.Vector3(.15,-.025,.018),new T.Vector3(-1,0,0)),normal:new T.Vector3(-1,0,0)},
-        Left:{point:gunSurface(model,new T.Vector3(0,-.15,-.175),new T.Vector3(0,1,0)),normal:new T.Vector3(0,1,0)},
-    }:measureM4GripSurfaces(model),bindings={};
+    const surfaces=measureM4GripSurfaces(model),bindings={};
     for(const side of ['Right','Left']){
         const reference=rig.palmReferences.rifle[side],surface=surfaces[side];
         const before=reference.sample.normal.clone().applyQuaternion(reference.handInGun);
@@ -144,34 +139,6 @@ export function keepPalmTargetsReachable(rig,model,bindings,guides,support=true)
     shift.clampLength(0,.15);
     if(shift.lengthSq()>1e-12){model.position.copy(model.parent.worldToLocal(model.getWorldPosition(v()).add(shift)));model.updateMatrixWorld(true);}
     return shift;
-}
-
-// The sniper uses the same authored arm chain for every grounded gait.
-// Locomotion still supplies the chest, pelvis and legs; it cannot change the
-// weapon grip or roll the trigger elbow into the vest.
-export function isRefinedSniper(rig,state={}){
-    return rig.refinedPeek&&rig.animatedKind==='rifle'&&rig.animatedModel?.name==='M98B_Scoped'&&
-        !state.isReloading&&!state.isSliding&&!state.isSprinting&&state.isGrounded!==false&&
-        !/reload|throw|hit/.test(rig.animator?.current||'');
-}
-export function prepareSniperHoldingArms(rig,state={}){
-    if(!isRefinedSniper(rig,state)||!rig.palmReferences?.rifle)return;
-    for(const side of ['Left','Right'])for(const name of ['Shoulder','Arm','ForeArm','Hand']){
-        rig.bones[side+name].quaternion.copy(referenceJoint(rig,side,name,{...state,adsProgress:1}));
-    }
-    rig.object.updateMatrixWorld(true);
-    const root=rig.object.getWorldQuaternion(q()),hand=rig.bones.RightHand;
-    const gun=hand.getWorldQuaternion(q()).multiply(rig.animationGrips.rifle);
-    const forward=new T.Vector3(0,0,-1).applyQuaternion(gun);
-    const ads=T.MathUtils.clamp(state.adsProgress??(state.isAiming?1:0),0,1);
-    const desired=new T.Vector3(0,-.12*(1-ads),1).normalize().applyQuaternion(root);
-    desired.applyAxisAngle(new T.Vector3(1,0,0).applyQuaternion(root),-(state.aimPitch||0));
-    const correction=q().setFromUnitVectors(forward,desired);
-    // Rotate at the upper arm, preserving the clavicle's authored attachment.
-    for(const side of ['Left','Right']){
-        const arm=rig.bones[side+'Arm'];rig.setWorldRotation(arm,correction.clone().multiply(arm.getWorldQuaternion(q())));
-    }
-    rig.object.updateMatrixWorld(true);
 }
 
 export function isM4StandingIdle(rig,state={}){
@@ -212,7 +179,7 @@ export function prepareM4HoldingArms(rig,state={}){
         rig.object.updateMatrixWorld(true);
     }
 }
-export function preferredElbow(rig,side,target,rotation,guide,state){
+function preferredElbow(rig,side,target,rotation,guide,state){
     const hand=rig.bones[side+'Hand'],lower=rig.bones[side+'ForeArm'],upper=rig.bones[side+'Arm'];
     const length=lower.getWorldPosition(v()).distanceTo(hand.getWorldPosition(v()));
     const forearmFrame=rotation.clone().multiply(referenceJoint(rig,side,'Hand',state).invert());
@@ -233,7 +200,7 @@ function boundedRoll(current,desired,axis,limit){
     angle=T.MathUtils.clamp(angle,-limit,limit);
     return {rotation:q().setFromAxisAngle(axis,angle).multiply(current),angle};
 }
-export function referenceArmFrames(rig,side,rotation,state){
+function referenceArmFrames(rig,side,rotation,state){
     const reference=name=>referenceJoint(rig,side,name,state);
     const upper=rig.bones[side+'Arm'],lower=rig.bones[side+'ForeArm'],hand=rig.bones[side+'Hand'];
     const lowerAxis=hand.getWorldPosition(v()).sub(lower.getWorldPosition(v())).normalize();
@@ -255,17 +222,11 @@ export function fitPalmGrip(rig,model,side,binding,guide,state={}){
     if(guide?.position)point.add(new T.Vector3().fromArray(guide.position).applyQuaternion(modelRotation));
     const scale=hand.getWorldScale(v());
     const wrist=point.clone().sub(binding.sample.point.clone().multiply(scale).applyQuaternion(rotation));
-    let pole=preferredElbow(rig,side,wrist,rotation,guide,state);
-    if(isRefinedSniper(rig,state)){
-        // A continuous bend plane follows the chest. Selecting a different
-        // elbow-circle solution per frame can flip the arm during a gait.
-        const body=torsoEnvelope(rig,rig.object.getWorldQuaternion(q()));
-        pole=upper.getWorldPosition(v()).addScaledVector(body.across,side==='Right'?.45:-.45).addScaledVector(body.up,-.20).addScaledVector(body.front,.10);
-    }
+    const pole=preferredElbow(rig,side,wrist,rotation,guide,state);
     let error=Infinity,iterations=0,roll;
     for(;iterations<4;iterations++){
         rig.solveIK(upper,lower,hand,wrist,pole);rig.setWorldRotation(hand,rotation);
-        if(iterations===0)roll=referenceArmFrames(rig,side,rotation,isRefinedSniper(rig,state)?{...state,adsProgress:1}:state);
+        if(iterations===0)roll=referenceArmFrames(rig,side,rotation,state);
         rig.object.updateMatrixWorld(true);
         const residual=point.clone().sub(palmWorldPosition(binding.sample));error=residual.length();
         if(error<.0005)break;

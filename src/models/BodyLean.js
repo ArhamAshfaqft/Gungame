@@ -41,8 +41,7 @@ export function applyBodyLean(rig,state={}) {
     // Fit the desired exposure using bounded rotations only. Never pull the spine
     // away from the pelvis to force a camera offset onto a shorter crouched torso.
     const distance=Number.isFinite(state.leanDistance)?THREE.MathUtils.clamp(state.leanDistance,0,.4):.32;
-    const refined=rig.refinedPeek&&crouched;
-    const target=Math.abs(amount)*(refined?Math.min(distance,.18):distance),maxAngle=Math.abs(amount)*(refined?.28:.55);
+    const target=Math.abs(amount)*distance,maxAngle=Math.abs(amount)*.55;
     let low=0,high=maxAngle;
     for(let i=0;i<9;i++){
         const middle=(low+high)*.5;

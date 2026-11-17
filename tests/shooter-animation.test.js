@@ -603,35 +603,3 @@ test('ragdoll ankles remain bounded and grounded bodies stop creeping on raised 
   for(const [i,p]of [...doll.particles.values()].entries())assert.ok(before[i].distanceTo(p.position)<1e-9,'no sliding after rest');
  }
 });
-
-
-test('single-player crouched peeks keep both rifle grips attached across directional gaits without changing legs',()=>{
- const extra=JSON.parse(readFileSync(new URL('../public/assets/animations/rifle-expansion-pack.json',import.meta.url)));
- const r=rig({...combined,clips:[...combined.clips,...extra.clips]}),model=new THREE.Group();r.object.add(model);model.scale.setScalar(.85);r.attachAnimatedModel(model,'rifle','primary');r.refinedPeek=true;
- const library=JSON.parse(readFileSync(new URL('../public/assets/poses/studio-library.json',import.meta.url)));
- r.resolveAnimationPose=()=>applyFullBodyPose(r,library,'primary',0);r.peekPoses=library.peekPoses;
- for(const clip of ['idle','rifleCrouchIdle','rifleCrouchWalk','rifleCrouchBack','rifleCrouchLeft','rifleCrouchRight','rifleCrouchWalkForwardLeft','rifleCrouchWalkForwardRight'])for(const lean of [-1,-.5,.5,1])for(const adsProgress of [0,1])for(const phase of [.1,.4,.7]){
-  r.animator.sample(clip,phase);r.animator.actionRemaining=0;r.object.updateMatrixWorld(true);
-  const legs=['Hips','LeftUpLeg','LeftLeg','LeftFoot','RightUpLeg','RightLeg','RightFoot'];
-  const before=legs.map(n=>({q:r.bones[n].quaternion.clone(),p:r.bones[n].getWorldPosition(new THREE.Vector3())}));
-  r.resolveAnimationPose=()=>applyFullBodyPose(r,library,'primary',adsProgress);
-  r.finishAnimatedPose({isGrounded:true,isCrouching:clip!=='idle',lean,adsProgress,speed:clip.includes('Idle')?0:1.4});
-  assert.ok(r.rightGripMiss<.005,`${clip}: trigger grip ${r.rightGripMiss}`);
-  const reference=r.animator.holdingPoses.rifleReady.get('RightForeArm').clone().slerp(r.animator.holdingPoses.rifle.get('RightForeArm'),adsProgress);
-  const delta=r.bones.RightForeArm.quaternion.clone().multiply(reference.clone().invert()).normalize();
-  const axis=r.bones.RightForeArm.position.clone().normalize();
-  const twist=2*Math.atan2(delta.x*axis.x+delta.y*axis.y+delta.z*axis.z,delta.w);
-  assert.ok(Math.abs(Math.atan2(Math.sin(twist),Math.cos(twist)))<.35,`${clip}: trigger elbow axial twist ${twist}`);
-
-  assert.ok(r.supportGripMiss<.005,`${clip}: support grip ${r.supportGripMiss}`);
-  assert.ok(r.bones.RightHand.getWorldPosition(new THREE.Vector3()).distanceTo(model.localToWorld(RIGHT_GRIP.clone()))<.005,`${clip}: trigger hand stays on gun after saved placement`);
-  for(const [i,n]of legs.entries()){
-   assert.ok(r.bones[n].quaternion.clone().normalize().angleTo(before[i].q.clone().normalize())<1e-6,`${clip}: ${n} rotation retained`);
-   assert.ok(r.bones[n].getWorldPosition(new THREE.Vector3()).distanceTo(before[i].p)<1e-6,`${clip}: ${n} position retained`);
-  }
-  if(clip!=='idle'){
-   const torso=r.bones.Head.getWorldPosition(new THREE.Vector3()).sub(r.bones.Hips.getWorldPosition(new THREE.Vector3()));
-   assert.ok(Math.abs(torso.z)<torso.y*.35,`${clip}: torso cannot fold onto knees`);
-  }
- }
-});

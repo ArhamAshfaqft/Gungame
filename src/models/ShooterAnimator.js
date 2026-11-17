@@ -135,12 +135,6 @@ export class ShooterAnimator {
             this.crouchPeekTorso=new Map(['Spine','Spine1','Spine2','Neck','Head'].map(name=>[name,inverse.clone().multiply(rig.bones[name].getWorldQuaternion(new THREE.Quaternion()))]));
             if(previous)this.sample(previous,0);
         }
-        // Cache chest orientation in character space, independent of the pelvis.
-        if(this.clips.has('idle')){
-            this.sample('idle',0);rig.object.updateMatrixWorld(true);
-            const inverse=rig.object.getWorldQuaternion(new THREE.Quaternion()).invert();
-            this.uprightPeekTorso=new Map(['Spine','Spine1','Spine2','Neck','Head'].map(name=>[name,inverse.clone().multiply(rig.bones[name].getWorldQuaternion(new THREE.Quaternion()))]));
-        }
         this.holdingBlend = 0;
         for (const action of this.actions.values()) action.stop();
         this.current = null; rig.reset();
