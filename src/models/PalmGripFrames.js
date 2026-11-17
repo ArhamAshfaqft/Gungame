@@ -109,7 +109,7 @@ export function bindPalmGripFrames(rig,model,{shared=false}={}){
     rig.palmGripBindings ||= new WeakMap();if(rig.palmGripBindings.has(model))return rig.palmGripBindings.get(model);
     const surfaces=isRefinedSniper(rig)?{
         Right:{point:gunSurface(model,new T.Vector3(.15,-.025,.018),new T.Vector3(-1,0,0)),normal:new T.Vector3(-1,0,0)},
-        Left:{point:gunSurface(model,new T.Vector3(0,-.15,-.30),new T.Vector3(0,1,0)),normal:new T.Vector3(0,1,0)},
+        Left:{point:gunSurface(model,new T.Vector3(0,-.15,-.175),new T.Vector3(0,1,0)),normal:new T.Vector3(0,1,0)},
     }:measureM4GripSurfaces(model),bindings={};
     for(const side of ['Right','Left']){
         const reference=rig.palmReferences.rifle[side],surface=surfaces[side];

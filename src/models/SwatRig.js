@@ -1,3 +1,4 @@
+import {seatSniperStock} from './SniperStock.js';
 import {pistolGripFrame,fitPistolPalm,orientPistolSleeve} from './PistolGrip.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -632,6 +633,7 @@ export class SwatRig {
             const savedRight=this.thirdPersonRightGrips?.[slot];
             const right=(sharedM4Trigger||sniperHolding)?{...savedRight,position:[0,0,0],elbowTarget:[0,0,0],contact:null}:savedRight;
             this.palmGripAdjustment=palmFrames?keepPalmTargetsReachable(this,model,palmFrames,{Right:right,Left:sniperHolding?null:this.thirdPersonGrips?.[slot]},!sharedM4Trigger&&state.handIK!==false&&this.poseSupportIK!==false&&!['reload','throw','hit'].includes(this.animator.current)):null;
+            if(sniperHolding&&palmFrames)seatSniperStock(this,model,state,palmFrames);
             this.palmGripDiagnostics=null;
             const pinTrigger=this.pinTriggerToWeapon||refinedRifleHolding;
             const basePosition = pinTrigger ? model.localToWorld(rightAnchor) : originalRightPosition;

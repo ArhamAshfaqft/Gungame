@@ -304,3 +304,20 @@ test('sniper arms remain continuous through gait changes, crouching, standing an
         assert.ok(r.rightGripMiss<.003,`${r.animator.current}: trigger contact`);
     }
 });
+
+test('sniper buttpad follows the right shoulder and the rear stock stays outside the vest',async t=>{
+ const {sniperStock}=await import('../src/models/SniperStock.js');
+ const {torsoEnvelope,torsoClearance}=await import('../src/models/ArmClearance.js');
+ const {r,model}=sniperSetup();let minimum=Infinity;
+ const library=JSON.parse(readFileSync(new URL('../public/assets/poses/studio-library.json',import.meta.url)));
+ for(const clip of ['rifleReadyIdle','walkBack','strafeLeft','strafeRight','rifleCrouchIdle','rifleCrouchWalk'])for(const lean of [-1,0,1])for(const adsProgress of [0,1])for(const aimPitch of [-.4,0,.4]){
+  r.resolveAnimationPose=()=>applyFullBodyPose(r,library,'primary',adsProgress);
+  r.animator.sample(clip,.3);r.finishAnimatedPose({isGrounded:true,isCrouching:/crouch/i.test(clip),lean,adsProgress,aimPitch});
+  const stock=sniperStock(model),body=torsoEnvelope(r,r.object.getWorldQuaternion(new T.Quaternion()));
+  assert.ok(model.localToWorld(stock.contact.clone()).distanceTo(r.stockContact.target)<.00001,'buttpad must stay seated after both hands are solved');
+  for(const point of stock.points){const gap=torsoClearance(model.localToWorld(point.clone()),body,0);minimum=Math.min(minimum,gap);}
+  assert.ok(r.rightGripMiss<.003&&r.supportGripMiss<.003,`${clip}/${lean}/${adsProgress}/${aimPitch}: hands remain attached ${r.rightGripMiss}/${r.supportGripMiss}`);
+ }
+ t.diagnostic('Minimum rear-stock/vest clearance: '+(minimum*1000).toFixed(2)+' mm');
+ assert.ok(minimum>-.005,'rear stock must not penetrate the vest');
+});
