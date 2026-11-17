@@ -257,3 +257,50 @@ test('cached standing carry does not override crouched reload arm animation',()=
  for(const {r}of [a,b]){r.animator.sample('reload',.4);r.finishAnimatedPose({isCrouching:true,isGrounded:true,isReloading:true});}
  for(const name of ['LeftShoulder','RightShoulder','LeftArm','RightArm','LeftForeArm','RightForeArm','LeftHand','RightHand'])assert.ok(a.r.bones[name].getWorldQuaternion(new T.Quaternion()).normalize().angleTo(b.r.bones[name].getWorldQuaternion(new T.Quaternion()).normalize())<1e-6,name+' must retain reload motion');
 });
+
+const sniperAsset=await asset('weapons/m98b.glb');
+function sniperSetup(refined=true){
+    const r=instantiateSwatRig(body.getObjectByName('SWAT_Body'));r.animator=new ShooterAnimator(r,pack);
+    const model=sniperAsset.clone(true);model.name='M98B_Scoped';model.scale.setScalar(.85);
+    r.object.add(model);r.attachAnimatedModel(model,'rifle','primary');r.refinedPeek=refined;
+    return {r,model};
+}
+test('sniper visible palms stay attached across all standing/crouched gaits and peeks without elbow penetration',async t=>{
+    const {torsoEnvelope,torsoClearance}=await import('../src/models/ArmClearance.js');
+    const {r,model}=sniperSetup();let worst=0,minClearance=Infinity;
+    const clips=['idle','rifleReadyIdle','walk','walkBack','runBack','strafeLeft','strafeRight','rifleCrouchIdle','rifleCrouchWalk','rifleCrouchBack','rifleCrouchLeft','rifleCrouchRight','rifleCrouchWalkForwardLeft','rifleCrouchWalkForwardRight'];
+    for(const clip of clips)for(const time of [.1,.35,.7])for(const lean of [-1,0,1])for(const ads of [0,1]){
+        if(!r.animator.actions.has(clip))continue;
+        r.animator.sample(clip,time);r.finishAnimatedPose({isCrouching:/crouch/i.test(clip),isGrounded:true,lean,adsProgress:ads,speed:2});
+        const frames=bindPalmGripFrames(r,model),body=torsoEnvelope(r,r.object.getWorldQuaternion(new T.Quaternion()));
+        for(const side of ['Right','Left']){
+            const gap=palmWorldPosition(frames[side].sample).distanceTo(frames[side].anchor.getWorldPosition(new T.Vector3()));worst=Math.max(worst,gap);
+            assert.ok(gap<.003,`${clip}/${time}/${lean}/${ads}/${side}: actual glove gap ${gap}`);
+            const elbow=r.bones[side+'ForeArm'].getWorldPosition(new T.Vector3());
+            const clearance=torsoClearance(elbow,body,.055);minClearance=Math.min(minClearance,clearance);
+            assert.ok(clearance>-.005,`${clip}/${time}/${lean}/${ads}/${side}: elbow in vest ${clearance}`);
+        }
+    }
+    t.diagnostic(`Worst visible palm gap ${(worst*1000).toFixed(2)} mm; minimum elbow clearance ${(minClearance*1000).toFixed(2)} mm.`);
+});
+test('sniper repair stays disabled for multiplayer and released-hand actions',()=>{
+    const {r,model}=sniperSetup(false);r.animator.sample('runBack',.2);r.finishAnimatedPose({isGrounded:true});
+    assert.equal(r.palmGripDiagnostics,null);assert.equal(bindPalmGripFrames(r,model),null);
+    r.refinedPeek=true;r.animator.sample('reload',.3);r.finishAnimatedPose({isReloading:true});assert.equal(r.palmGripDiagnostics,null);
+});
+
+test('sniper arms remain continuous through gait changes, crouching, standing and peek release',()=>{
+    const {r,model}=sniperSetup();let previous;
+    for(const segment of [
+        {speed:0,forward:0,lateral:0},{speed:2,forward:-1,lateral:0},
+        {speed:2,forward:0,lateral:1},{speed:2,forward:0,lateral:-1},
+        {speed:0,isCrouching:true,lean:1},{speed:1,isCrouching:true,lean:0,forward:-1},
+        {speed:0,isCrouching:false,lean:0},
+    ])for(let frame=0;frame<120;frame++){
+        r.update(1/60,{equipment:'rifle',isGrounded:true,isCrouching:false,lean:0,adsProgress:0,...segment});
+        const current=['RightShoulder','RightArm','RightForeArm','RightHand'].map(n=>r.bones[n].getWorldQuaternion(new T.Quaternion()).normalize());
+        if(previous)current.forEach((q,i)=>assert.ok(q.angleTo(previous[i])<.38,`${r.animator.current}/${frame}/${i} arm jump ${q.angleTo(previous[i])}`));
+        previous=current;
+        assert.ok(r.rightGripMiss<.003,`${r.animator.current}: trigger contact`);
+    }
+});
