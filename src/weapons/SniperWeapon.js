@@ -85,7 +85,7 @@ export class SniperWeapon {
         this.rifleModel = null;
         this.scopeModel = null;
 
-        this.loadAssets();
+        this.assetsReady=this.loadAssets();
         this.setupInput();
     }
 

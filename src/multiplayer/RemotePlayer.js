@@ -13,7 +13,7 @@ export class RemotePlayer{
   this.view.allowSightCamera=false;this.view.updateCamera=()=>{};this.view.footsteps.update=()=>{};
   this.view.ready.then(()=>{if(this.disposed){game.scene.remove(this.view.rig.object);return;}this.view.enabled=true;this.view.rig.object.traverse(o=>{if(o.isMesh){o.userData.isShootable=false;o.userData.isAimTarget=true;}});}).catch(e=>console.error('Remote character could not load',e));
  }
- push(data,time){this.timeline.push(data,time);}
+ push(data,time){this.view.setTeam(data.team);this.timeline.push(data,time);}
  update(delta){
   const sample=this.timeline.sample(delta);if(!sample)return;const {a,b:d,t,ahead}=sample,m=this.m;
   m.position.fromArray(a.movement.position).lerp(this.target.fromArray(d.movement.position),t);m.velocity.fromArray(a.movement.velocity).lerp(this.target.fromArray(d.movement.velocity),t);

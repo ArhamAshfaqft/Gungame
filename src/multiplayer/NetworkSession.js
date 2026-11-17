@@ -1,3 +1,4 @@
+import {setRigTeam} from '../models/TeamAppearance.js';
 import {resolvePlayerContacts} from './PlayerContacts.js';
 import {connectBrowserRoom} from './BrowserRoom.js';
 import {DamageFeedback} from './DamageFeedback.js';
@@ -85,7 +86,9 @@ export class NetworkSession{
  }
  snapshot(data){
   this.lastSnapshot=data;const ids=new Set();const g=this.game;
-  for(const p of data.players){if(p.id===this.id){this.reconcile(p);this.own=p;continue;}if(p.spectator)continue;ids.add(p.id);let remote=this.remotes.get(p.id);if(!remote){remote=new RemotePlayer(g,p.id);this.remotes.set(p.id,remote);}remote.push(p,data.time);}
+  for(const p of data.players){if(p.id===this.id){this.reconcile(p);this.own=p;
+   if(this.appearanceTeam!==p.team){this.appearanceTeam=p.team;g.thirdPerson.setTeam(p.team);g.weapon.assetsReady?.then(()=>setRigTeam(g.weapon.armsRig,p.team));}
+   continue;}if(p.spectator)continue;ids.add(p.id);let remote=this.remotes.get(p.id);if(!remote){remote=new RemotePlayer(g,p.id);this.remotes.set(p.id,remote);}remote.push(p,data.time);}
   for(const [id,remote] of this.remotes)if(!ids.has(id)){remote.dispose();this.remotes.delete(id);}
   const alive=new Set();for(const p of data.grenades){alive.add(p.id);let mesh=this.grenades.get(p.id);if(!mesh){mesh=createGrenadeModel(p.type);mesh.getObjectByName('SafetyPin').visible=false;mesh.userData.projectilePresentation=new ProjectilePresentation(mesh);g.scene.add(mesh);this.grenades.set(p.id,mesh);}mesh.userData.projectilePresentation.push(p.position);}
   for(const [id,mesh] of this.grenades)if(!alive.has(id)){g.scene.remove(mesh);this.grenades.delete(id);}

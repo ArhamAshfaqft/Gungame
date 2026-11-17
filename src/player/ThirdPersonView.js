@@ -1,3 +1,4 @@
+import {setRigTeam} from '../models/TeamAppearance.js';
 import {attachMuzzleFlash,updateMuzzleFlash,muzzleWorldPosition} from '../models/MuzzleFlash.js';
 import * as THREE from 'three';
 import { createSwatRig } from '../models/SwatRig.js';
@@ -45,6 +46,12 @@ export class ThirdPersonView {
         for (const model of Object.values(this.models)) { rig.object.add(model); model.visible = false; }
         rig.object.visible = false; this.scene.add(rig.object);
         this.movement.footstepsFromAnimation=!!rig.animator?.pack.footContacts;
+    }
+    setTeam(team){
+        if(this.team===team)return this.teamReady;
+        this.team=team;
+        this.teamReady=this.ready.then(()=>setRigTeam(this.rig,this.team));
+        return this.teamReady;
     }
     get aimingThroughSights(){return this.allowSightCamera!==false&&!this.inspecting&&this.enabled&&this.weapon.isAiming&&!this.equipment.held&&!this.weapon.isReloading;}
     get usesChaseCamera(){return this.enabled&&!this.aimingThroughSights;}
